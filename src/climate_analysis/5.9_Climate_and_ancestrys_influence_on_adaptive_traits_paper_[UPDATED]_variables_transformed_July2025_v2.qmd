@@ -15,10 +15,18 @@ knitr:
 editor_options: 
   chunk_output_type: console
 ---
+```{r}
+#| message: false
+#| warning: false
+#| echo: false
+
+# set working directory  
+setwd("Z:/Anoob/Polygenic_Adaptation/ANALYSIS")
+```
 
 # Background
 
-The following analysis is carried out to sparse out the effect of climate and admixture ancestry on locally adaptive traits in red spruce. The analysis is carried out for all the traits that was observed to be selected for under the Q~PC~ analysis.  
+The following analysis is carried out to sparse out the effect of climate and admixture ancestry on locally adaptive traits in red spruce. The analysis is carried out for all the traits that was observed to be selected for under the Q~PC~ analysis.
 
 **Steps**
 
@@ -30,7 +38,7 @@ The following analysis is carried out to sparse out the effect of climate and ad
 
 -   Diagnostic plots: Checks for normality and homoscedasticity of residuals.
 
--   QQ plot: Specifically checks residual normality.  
+-   QQ plot: Specifically checks residual normality.
 
 ```{r}
 #| message: false
@@ -49,6 +57,7 @@ require(tidymodels)
 require(modelsummary)
 require(DT)
 require(GGally)
+
 ```
 
 ## Data
@@ -143,9 +152,10 @@ Garden_clim[vt_numeric] <- lapply(Garden_clim[vt_numeric], as.numeric)
 data_clim <- left_join(data,climateNA[,-c(2:8)])
 ```
 
-# Functions for Model testing   
-:::panel-tabset
-## Function to run the models  
+# Functions for Model testing
+
+::: panel-tabset
+## Function to run the models
 
 ```{r}
 scale_models <- function(data, 
@@ -193,6 +203,7 @@ scale_models <- function(data,
 ```
 
 ## Function to summarize models
+
 ```{r}
 summarize_models <- function(model_list, 
                                     coef_names = NULL,
@@ -270,7 +281,7 @@ coef_map_PC2 <- c(
 )
 ```
 
-## Function for 3D plot  
+## Function for 3D plot
 
 ```{r}
 plot_in3d <- function(data, x, y, z, shape=NA, pch, grid.lines = 20, theta = 40, phi = 20,
@@ -351,6 +362,7 @@ scatter_data <- scatter_data %>% pivot_longer(cols = climate_vars, names_to = "C
 ```
 
 # Correlations between Climate, Ancestry and Kinship PCs
+
 ```{r}
 #| fig-height: 15
 #| fig-width: 15
@@ -375,9 +387,9 @@ corr_pair + theme_bw()
 #        units = "cm")
 ```
 
-
 # Height Growth
-:::panel-tabset
+
+::::: panel-tabset
 ## Scatter plot
 
 ```{r}
@@ -387,6 +399,7 @@ ggplot(scatter_data, aes(x = ClimateValue, y = scale(Growth))) +
 ```
 
 ## Model summaries
+
 ```{r}
 #| code-fold: true
 
@@ -418,9 +431,9 @@ growth_models_all_scaled <- scale_models(data = data_clim,
                                             scale_predictors = T)
 ```
 
-::::panel-tabset
+::: panel-tabset
+### Unscaled data
 
-### Unscaled data  
 ```{r}
 #| code-fold: true
 summarize_models(growth_models_unscaled,
@@ -429,7 +442,8 @@ summarize_models(growth_models_unscaled,
 
 ```
 
-### Predictors scaled  
+### Predictors scaled
+
 ```{r}
 #| code-fold: true
 summarize_models(growth_models_pred_scaled,
@@ -437,7 +451,8 @@ summarize_models(growth_models_pred_scaled,
                  output_format = "gt")
 ```
 
-### All variables scaled  
+### All variables scaled
+
 ```{r}
 #| code-fold: true
 summarize_models(growth_models_all_scaled,
@@ -449,10 +464,10 @@ growth_models_tinytables <- summarize_models(growth_models_all_scaled,
                                              output_format = "tinytable")
 # tinytable::save_tt(growth_models_tinytables, "./tables/growth_model.docx")
 ```
-::::
-
+:::
 
 ## Compare models using AIC
+
 ```{r}
 #| code-fold: true
 # Compare models using AIC
@@ -480,7 +495,8 @@ growth_model_comparison |>
   DT::formatRound(1:3, digits = 2)
 ```
 
-**Delta AIC**  
+**Delta AIC**
+
 ```{r}
 # Calculate AIC for each model
 aic_values <- sapply(growth_models_all_scaled, AIC)
@@ -501,9 +517,9 @@ t(aic_df)
 
 ## Diagnostic plots
 
-::::panel-tabset
+::: panel-tabset
+### Unscaled data
 
-### Unscaled data 
 ```{r}
 par(mfrow = c(2, 2))
 plot(growth_models_unscaled[["PAS"]])
@@ -511,7 +527,8 @@ plot(growth_models_unscaled[["PAS"]])
 plot(growth_models_unscaled[["PET"]])
 ```
 
-### Predictors scaled 
+### Predictors scaled
+
 ```{r}
 par(mfrow = c(2, 2))
 plot(growth_models_pred_scaled[["PAS"]])
@@ -519,20 +536,22 @@ plot(growth_models_pred_scaled[["PAS"]])
 plot(growth_models_pred_scaled[["PET"]])
 ```
 
-### All variables scaled 
+### All variables scaled
+
 ```{r}
 par(mfrow = c(2, 2))
 plot(growth_models_all_scaled[["PAS"]])
 
 plot(growth_models_all_scaled[["PET"]])
 ```
-::::
 :::
+:::::
 
---- 
+------------------------------------------------------------------------
 
 # Total Dry Biomass
-:::panel-tabset
+
+::::: panel-tabset
 ## Scatter plot
 
 ```{r}
@@ -542,6 +561,7 @@ ggplot(scatter_data, aes(x = ClimateValue, y = scale(TotalDry))) +
 ```
 
 ## Model summaries
+
 ```{r}
 #| code-fold: true
 
@@ -573,9 +593,9 @@ tdm_models_all_scaled <- scale_models(data = data_clim,
                                             scale_predictors = T)
 ```
 
-::::panel-tabset
+::: panel-tabset
+### Unscaled data
 
-### Unscaled data  
 ```{r}
 #| code-fold: true
 summarize_models(tdm_models_unscaled,
@@ -584,7 +604,8 @@ summarize_models(tdm_models_unscaled,
 
 ```
 
-### Predictors scaled  
+### Predictors scaled
+
 ```{r}
 #| code-fold: true
 summarize_models(tdm_models_pred_scaled,
@@ -592,7 +613,8 @@ summarize_models(tdm_models_pred_scaled,
                  output_format = "gt")
 ```
 
-### All variables scaled  
+### All variables scaled
+
 ```{r}
 #| code-fold: true
 summarize_models(tdm_models_all_scaled,
@@ -605,10 +627,10 @@ total_dry_models_tinytables <- summarize_models(tdm_models_all_scaled,
 
 # tinytable::save_tt(total_dry_models_tinytables, "./tables/total_dry_biomass_model.docx")
 ```
-::::
-
+:::
 
 ## Compare models using AIC
+
 ```{r}
 #| code-fold: true
 # Compare models using AIC
@@ -637,7 +659,8 @@ tdm_model_comparison |>
 
 ```
 
-**Delta AIC**  
+**Delta AIC**
+
 ```{r}
 # Calculate AIC for each model
 aic_values <- sapply(tdm_models_all_scaled, AIC)
@@ -658,9 +681,9 @@ t(aic_df)
 
 ## Diagnostic plots
 
-::::panel-tabset
+::: panel-tabset
+### Unscaled data
 
-### Unscaled data 
 ```{r}
 par(mfrow = c(2, 2))
 plot(tdm_models_unscaled[["DD18"]])
@@ -668,7 +691,8 @@ plot(tdm_models_unscaled[["DD18"]])
 plot(tdm_models_unscaled[["eFFP"]])
 ```
 
-### Predictors scaled 
+### Predictors scaled
+
 ```{r}
 par(mfrow = c(2, 2))
 plot(tdm_models_pred_scaled[["DD18"]])
@@ -676,20 +700,22 @@ plot(tdm_models_pred_scaled[["DD18"]])
 plot(tdm_models_pred_scaled[["eFFP"]])
 ```
 
-### All variables scaled 
+### All variables scaled
+
 ```{r}
 par(mfrow = c(2, 2))
 plot(tdm_models_all_scaled[["DD18"]])
 
 plot(tdm_models_all_scaled[["eFFP"]])
 ```
-::::
 :::
+:::::
 
---- 
+------------------------------------------------------------------------
 
 # Height Growth plasticity
-:::panel-tabset
+
+::::: panel-tabset
 ## Scatter plot
 
 ```{r}
@@ -699,6 +725,7 @@ ggplot(scatter_data, aes(x = ClimateValue, y = scale(Growth_plasticity))) +
 ```
 
 ## Model summaries
+
 ```{r}
 #| code-fold: true
 
@@ -730,9 +757,9 @@ growth_plasticity_models_all_scaled <- scale_models(data = data_clim,
                                             scale_predictors = T)
 ```
 
-::::panel-tabset
+::: panel-tabset
+### Unscaled data
 
-### Unscaled data  
 ```{r}
 #| code-fold: true
 summarize_models(growth_plasticity_models_unscaled,
@@ -741,7 +768,8 @@ summarize_models(growth_plasticity_models_unscaled,
 
 ```
 
-### Predictors scaled  
+### Predictors scaled
+
 ```{r}
 #| code-fold: true
 summarize_models(growth_plasticity_models_pred_scaled,
@@ -749,7 +777,8 @@ summarize_models(growth_plasticity_models_pred_scaled,
                  output_format = "gt")
 ```
 
-### All variables scaled  
+### All variables scaled
+
 ```{r}
 #| code-fold: true
 summarize_models(growth_plasticity_models_all_scaled,
@@ -761,10 +790,10 @@ growth_plasticity_models_tinytables <- summarize_models(growth_plasticity_models
                                              output_format = "tinytable")
 # tinytable::save_tt(growth_plasticity_models_tinytables, "./tables/growth_plasticity_model.docx")
 ```
-::::
-
+:::
 
 ## Compare models using AIC
+
 ```{r}
 #| code-fold: true
 # Compare models using AIC
@@ -793,7 +822,8 @@ growth_plasticity_model_comparison |>
 
 ```
 
-**Delta AIC**  
+**Delta AIC**
+
 ```{r}
 # Calculate AIC for each model
 aic_values <- sapply(growth_plasticity_models_all_scaled, AIC)
@@ -814,9 +844,9 @@ t(aic_df)
 
 ## Diagnostic plots
 
-::::panel-tabset
+::: panel-tabset
+### Unscaled data
 
-### Unscaled data 
 ```{r}
 par(mfrow = c(2, 2))
 plot(growth_plasticity_models_unscaled[["PET"]])
@@ -824,7 +854,8 @@ plot(growth_plasticity_models_unscaled[["PET"]])
 plot(growth_plasticity_models_unscaled[["PAS"]])
 ```
 
-### Predictors scaled 
+### Predictors scaled
+
 ```{r}
 par(mfrow = c(2, 2))
 plot(growth_plasticity_models_pred_scaled[["PET"]])
@@ -832,20 +863,22 @@ plot(growth_plasticity_models_pred_scaled[["PET"]])
 plot(growth_plasticity_models_pred_scaled[["PAS"]])
 ```
 
-### All variables scaled 
+### All variables scaled
+
 ```{r}
 par(mfrow = c(2, 2))
 plot(growth_plasticity_models_all_scaled[["PET"]])
 
 plot(growth_plasticity_models_all_scaled[["PAS"]])
 ```
-::::
 :::
+:::::
 
---- 
+------------------------------------------------------------------------
 
 # Total Dry Biomass plasticity
-:::panel-tabset
+
+::::: panel-tabset
 ## Scatter plot
 
 ```{r}
@@ -855,6 +888,7 @@ ggplot(scatter_data, aes(x = ClimateValue, y = scale(TotalDry_plasticity))) +
 ```
 
 ## Model summaries
+
 ```{r}
 #| code-fold: true
 
@@ -886,9 +920,9 @@ tdm_plasticity_models_all_scaled <- scale_models(data = data_clim,
                                             scale_predictors = T)
 ```
 
-::::panel-tabset
+::: panel-tabset
+### Unscaled data
 
-### Unscaled data  
 ```{r}
 #| code-fold: true
 summarize_models(tdm_plasticity_models_unscaled,
@@ -897,7 +931,8 @@ summarize_models(tdm_plasticity_models_unscaled,
 
 ```
 
-### Predictors scaled  
+### Predictors scaled
+
 ```{r}
 #| code-fold: true
 summarize_models(tdm_plasticity_models_pred_scaled,
@@ -905,7 +940,8 @@ summarize_models(tdm_plasticity_models_pred_scaled,
                  output_format = "gt")
 ```
 
-### All variables scaled  
+### All variables scaled
+
 ```{r}
 #| code-fold: true
 summarize_models(tdm_plasticity_models_all_scaled,
@@ -918,10 +954,10 @@ tdm_plasticity_models_tinytables <- summarize_models(tdm_plasticity_models_all_s
 
 # tinytable::save_tt(tdm_plasticity_models_tinytables, "./tables/total_dry_biomass_plasticity_model.docx")
 ```
-::::
-
+:::
 
 ## Compare models using AIC
+
 ```{r}
 #| code-fold: true
 # Compare models using AIC
@@ -950,7 +986,8 @@ tdm_plasticity_model_comparison |>
 
 ```
 
-**Delta AIC**  
+**Delta AIC**
+
 ```{r}
 # Calculate AIC for each model
 aic_values <- sapply(tdm_plasticity_models_all_scaled, AIC)
@@ -971,9 +1008,9 @@ t(aic_df)
 
 ## Diagnostic plots
 
-::::panel-tabset
+::: panel-tabset
+### Unscaled data
 
-### Unscaled data 
 ```{r}
 par(mfrow = c(2, 2))
 plot(tdm_plasticity_models_unscaled[["DD18"]])
@@ -981,7 +1018,8 @@ plot(tdm_plasticity_models_unscaled[["DD18"]])
 plot(tdm_plasticity_models_unscaled[["eFFP"]])
 ```
 
-### Predictors scaled 
+### Predictors scaled
+
 ```{r}
 par(mfrow = c(2, 2))
 plot(tdm_plasticity_models_pred_scaled[["DD18"]])
@@ -989,20 +1027,22 @@ plot(tdm_plasticity_models_pred_scaled[["DD18"]])
 plot(tdm_plasticity_models_pred_scaled[["eFFP"]])
 ```
 
-### All variables scaled 
+### All variables scaled
+
 ```{r}
 par(mfrow = c(2, 2))
 plot(tdm_plasticity_models_all_scaled[["DD18"]])
 
 plot(tdm_plasticity_models_all_scaled[["eFFP"]])
 ```
-::::
 :::
+:::::
 
---- 
+------------------------------------------------------------------------
 
-# Bud set (2019)  
-:::panel-tabset
+# Bud set (2019)
+
+::::: panel-tabset
 ## Scatter plot
 
 ```{r}
@@ -1012,6 +1052,7 @@ ggplot(scatter_data, aes(x = ClimateValue, y = scale(BudSet_2019))) +
 ```
 
 ## Model summaries
+
 ```{r}
 #| code-fold: true
 
@@ -1043,9 +1084,9 @@ budset_19_models_all_scaled <- scale_models(data = data_clim,
                                             scale_predictors = T)
 ```
 
-::::panel-tabset
+::: panel-tabset
+### Unscaled data
 
-### Unscaled data  
 ```{r}
 #| code-fold: true
 summarize_models(budset_19_models_unscaled,
@@ -1054,7 +1095,8 @@ summarize_models(budset_19_models_unscaled,
 
 ```
 
-### Predictors scaled  
+### Predictors scaled
+
 ```{r}
 #| code-fold: true
 summarize_models(budset_19_models_pred_scaled,
@@ -1062,7 +1104,8 @@ summarize_models(budset_19_models_pred_scaled,
                  output_format = "gt")
 ```
 
-### All variables scaled  
+### All variables scaled
+
 ```{r}
 #| code-fold: true
 summarize_models(budset_19_models_all_scaled,
@@ -1075,10 +1118,10 @@ budset_19_models_tinytables <- summarize_models(budset_19_models_all_scaled,
 
 # tinytable::save_tt(budset_19_models_tinytables, "./tables/budset_19_model.docx")
 ```
-::::
-
+:::
 
 ## Compare models using AIC
+
 ```{r}
 #| code-fold: true
 # Compare models using AIC
@@ -1107,7 +1150,8 @@ budset_19_model_comparison |>
 
 ```
 
-**Delta AIC**  
+**Delta AIC**
+
 ```{r}
 # Calculate AIC for each model
 aic_values <- sapply(budset_19_models_all_scaled, AIC)
@@ -1128,9 +1172,9 @@ t(aic_df)
 
 ## Diagnostic plots
 
-::::panel-tabset
+::: panel-tabset
+### Unscaled data
 
-### Unscaled data 
 ```{r}
 par(mfrow = c(2, 2))
 plot(budset_19_models_unscaled[["DD_0"]])
@@ -1138,7 +1182,8 @@ plot(budset_19_models_unscaled[["DD_0"]])
 plot(budset_19_models_unscaled[["PAS"]])
 ```
 
-### Predictors scaled 
+### Predictors scaled
+
 ```{r}
 par(mfrow = c(2, 2))
 plot(budset_19_models_pred_scaled[["DD_0"]])
@@ -1146,20 +1191,22 @@ plot(budset_19_models_pred_scaled[["DD_0"]])
 plot(budset_19_models_pred_scaled[["PAS"]])
 ```
 
-### All variables scaled 
+### All variables scaled
+
 ```{r}
 par(mfrow = c(2, 2))
 plot(budset_19_models_all_scaled[["DD_0"]])
 
 plot(budset_19_models_all_scaled[["PAS"]])
 ```
-::::
 :::
+:::::
 
---- 
+------------------------------------------------------------------------
 
-# Bud break (2020)  
-:::panel-tabset
+# Bud break (2020)
+
+::::: panel-tabset
 ## Scatter plot
 
 ```{r}
@@ -1169,6 +1216,7 @@ ggplot(scatter_data, aes(x = ClimateValue, y = scale(Budbreak_2020))) +
 ```
 
 ## Model summaries
+
 ```{r}
 #| code-fold: true
 
@@ -1200,9 +1248,9 @@ budbreak_20_models_all_scaled <- scale_models(data = data_clim,
                                             scale_predictors = T)
 ```
 
-::::panel-tabset
+::: panel-tabset
+### Unscaled data
 
-### Unscaled data  
 ```{r}
 #| code-fold: true
 summarize_models(budbreak_20_models_unscaled,
@@ -1211,7 +1259,8 @@ summarize_models(budbreak_20_models_unscaled,
 
 ```
 
-### Predictors scaled  
+### Predictors scaled
+
 ```{r}
 #| code-fold: true
 summarize_models(budbreak_20_models_pred_scaled,
@@ -1219,7 +1268,8 @@ summarize_models(budbreak_20_models_pred_scaled,
                  output_format = "gt")
 ```
 
-### All variables scaled  
+### All variables scaled
+
 ```{r}
 #| code-fold: true
 summarize_models(budbreak_20_models_all_scaled,
@@ -1232,10 +1282,10 @@ budbreak_20_models_tinytables <- summarize_models(budbreak_20_models_all_scaled,
 
 # tinytable::save_tt(budbreak_20_models_tinytables, "./tables/budbreak_20_model.docx")
 ```
-::::
-
+:::
 
 ## Compare models using AIC
+
 ```{r}
 #| code-fold: true
 # Compare models using AIC
@@ -1264,7 +1314,8 @@ budbreak_20_model_comparison |>
 
 ```
 
-**Delta AIC**  
+**Delta AIC**
+
 ```{r}
 # Calculate AIC for each model
 aic_values <- sapply(budbreak_20_models_all_scaled, AIC)
@@ -1285,9 +1336,9 @@ t(aic_df)
 
 ## Diagnostic plots
 
-::::panel-tabset
+::: panel-tabset
+### Unscaled data
 
-### Unscaled data 
 ```{r}
 par(mfrow = c(2, 2))
 plot(budbreak_20_models_unscaled[["DD18"]])
@@ -1297,7 +1348,8 @@ plot(budbreak_20_models_unscaled[["CMD"]])
 plot(budbreak_20_models_unscaled[["eFFP"]])
 ```
 
-### Predictors scaled 
+### Predictors scaled
+
 ```{r}
 par(mfrow = c(2, 2))
 plot(budbreak_20_models_pred_scaled[["DD18"]])
@@ -1307,7 +1359,8 @@ plot(budbreak_20_models_pred_scaled[["CMD"]])
 plot(budbreak_20_models_pred_scaled[["eFFP"]])
 ```
 
-### All variables scaled 
+### All variables scaled
+
 ```{r}
 par(mfrow = c(2, 2))
 plot(budbreak_20_models_all_scaled[["DD18"]])
@@ -1316,13 +1369,14 @@ plot(budbreak_20_models_all_scaled[["CMD"]])
 
 plot(budbreak_20_models_all_scaled[["eFFP"]])
 ```
-::::
 :::
+:::::
 
---- 
+------------------------------------------------------------------------
 
-# Bud break plasticity (2020)  
-:::panel-tabset
+# Bud break plasticity (2020)
+
+::::: panel-tabset
 ## Scatter plot
 
 ```{r}
@@ -1332,6 +1386,7 @@ ggplot(scatter_data, aes(x = ClimateValue, y = scale(BudBreak_cGDD_plasticity)))
 ```
 
 ## Model summaries
+
 ```{r}
 #| code-fold: true
 
@@ -1363,9 +1418,9 @@ budbreak_20_plasticity_models_all_scaled <- scale_models(data = data_clim,
                                             scale_predictors = T)
 ```
 
-::::panel-tabset
+::: panel-tabset
+### Unscaled data
 
-### Unscaled data  
 ```{r}
 #| code-fold: true
 summarize_models(budbreak_20_plasticity_models_unscaled,
@@ -1374,7 +1429,8 @@ summarize_models(budbreak_20_plasticity_models_unscaled,
 
 ```
 
-### Predictors scaled  
+### Predictors scaled
+
 ```{r}
 #| code-fold: true
 summarize_models(budbreak_20_plasticity_models_pred_scaled,
@@ -1382,7 +1438,8 @@ summarize_models(budbreak_20_plasticity_models_pred_scaled,
                  output_format = "gt")
 ```
 
-### All variables scaled  
+### All variables scaled
+
 ```{r}
 #| code-fold: true
 summarize_models(budbreak_20_plasticity_models_all_scaled,
@@ -1395,10 +1452,10 @@ budbreak_20_plasticity_models_tinytables <- summarize_models(budbreak_20_plastic
 
 # tinytable::save_tt(budbreak_20_plasticity_models_tinytables, "./tables/budbreak_20_plasticity_model.docx")
 ```
-::::
-
+:::
 
 ## Compare models using AIC
+
 ```{r}
 #| code-fold: true
 # Compare models using AIC
@@ -1427,7 +1484,8 @@ budbreak_20_plasticity_model_comparison |>
 
 ```
 
-**Delta AIC**  
+**Delta AIC**
+
 ```{r}
 # Calculate AIC for each model
 aic_values <- sapply(budbreak_20_plasticity_models_all_scaled, AIC)
@@ -1448,9 +1506,9 @@ t(aic_df)
 
 ## Diagnostic plots
 
-::::panel-tabset
+::: panel-tabset
+### Unscaled data
 
-### Unscaled data 
 ```{r}
 par(mfrow = c(2, 2))
 plot(budbreak_20_plasticity_models_unscaled[["CMD"]])
@@ -1458,7 +1516,8 @@ plot(budbreak_20_plasticity_models_unscaled[["CMD"]])
 plot(budbreak_20_plasticity_models_unscaled[["DD18"]])
 ```
 
-### Predictors scaled 
+### Predictors scaled
+
 ```{r}
 par(mfrow = c(2, 2))
 plot(budbreak_20_plasticity_models_pred_scaled[["CMD"]])
@@ -1466,17 +1525,18 @@ plot(budbreak_20_plasticity_models_pred_scaled[["CMD"]])
 plot(budbreak_20_plasticity_models_pred_scaled[["DD18"]])
 ```
 
-### All variables scaled 
+### All variables scaled
+
 ```{r}
 par(mfrow = c(2, 2))
 plot(budbreak_20_plasticity_models_all_scaled[["CMD"]])
 
 plot(budbreak_20_plasticity_models_all_scaled[["DD18"]])
 ```
-::::
 :::
+:::::
 
---- 
+------------------------------------------------------------------------
 
 # Figure 4
 
@@ -1560,7 +1620,6 @@ plot_in3d(data=data_clim,x="PET",y="PC2",z="Growth_plasticity", shape= "Region",
 
 ```
 
-
 # Figure S6
 
 ```{r echo=T,eval=F}
@@ -1610,7 +1669,6 @@ dev.off()
 par(mfrow = c(1, 1))
 ```
 
-
 ```{r}
 # better plot for bud break
 
@@ -1640,4 +1698,3 @@ plot_in3d(data=data_clim,x="DD18",y="PC1",z="BudBreak_cGDD_plasticity", shape= "
                       xlab="DD18",ylab="Genetic PC1",zlab="Bud break (p)", color_var = "q2",
           show_legends=T, shape_legend_position="bottomright")
 ```
-
