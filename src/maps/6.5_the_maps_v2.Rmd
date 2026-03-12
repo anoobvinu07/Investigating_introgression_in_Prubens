@@ -1,0 +1,2158 @@
+---
+title: "Source Selection Map"
+author: "Anoob Prakash"
+date: '2023-05-10'
+output:
+  rmarkdown::html_document:
+    theme: cosmo  
+    number_sections: false
+    toc: true
+    toc_float: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{css zoom-lib-src, echo = FALSE}
+script src = "https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"
+```
+
+```{js zoom-jquery, echo = FALSE}
+ $(document).ready(function() {
+    $('body').prepend('<div class=\"zoomDiv\"><img src=\"\" class=\"zoomImg\"></div>');
+    // onClick function for all plots (img's)
+    $('img:not(.zoomImg)').click(function() {
+      $('.zoomImg').attr('src', $(this).attr('src')).css({width: '100%'});
+      $('.zoomDiv').css({opacity: '1', width: 'auto', border: '1px solid white', borderRadius: '5px', position: 'fixed', top: '50%', left: '50%', marginRight: '-50%', transform: 'translate(-50%, -50%)', boxShadow: '0px 0px 50px #888888', zIndex: '50', overflow: 'auto', maxHeight: '100%'});
+    });
+    // onClick function for zoomImg
+    $('img.zoomImg').click(function() {
+      $('.zoomDiv').css({opacity: '0', width: '0%'}); 
+    });
+  });
+```
+
+## Files  
+```{r}
+# packages
+require(terra)
+require(tigris)
+require(elevatr)
+require(raster)
+require(tidyterra)
+require(ggplot2)
+require(sf)
+require(ggthemes)
+require(rnaturalearth)
+require(scatterpie)
+require(viridis)
+require(sf)
+require(rnaturalearth)
+require(viridis)
+require(tidyverse)
+require(ggforce)
+```
+
+
+```{r}
+# set working directory 
+# setwd("~/mydata/Anoob/TNC/ANALYSIS") # wright
+# setwd("/netfiles02/kellrlab/Anoob/TNC/ANALYSIS") # VACC
+setwd("Z:/Anoob/Polygenic_Adaptation/ANALYSIS") # local
+# setwd("~/mydata/Anoob/TNC/ANALYSIS") # wright
+```
+
+
+## Data  
+```{r}
+# incorporate ancestry score
+# Get ID and pop info for each individual
+pop<-read.table("filtering_the_snps_across_REGION/REGIONS/324RSfam_18BSfam_bam_VACC.list")
+pop$Family <- str_replace_all(pop$V1,"/netfiles02/kellrlab/datashare/Spruce/exome_capture/WES_mapping/Mapping_WES/ref_Pmariana/BWA/Prubens/NSF/","")
+pop$Family <- str_replace_all(pop$Family,"/netfiles02/kellrlab/datashare/Spruce/exome_capture/WES_mapping/Mapping_WES/ref_Pmariana/BWA/Pmariana/","")
+
+pop$Family <- str_replace_all(pop$Family,".sorted.rmdup.bam","")
+pop <- pop$Family
+dataset <- read.table("filtering_the_snps_across_REGION/admix/Full_Sampling_intersect_poly_updated_with_BS_samples_PCA_admix_K2.admix.2.Q")
+colnames(dataset) <- c("q1","q2")
+
+admix.id = as.data.frame(cbind(pop, dataset))
+names(admix.id) <- c("Family","q1","q2")
+
+# Meta data
+Meta <- read.table("../../BlackSpruce/Info_samples_all.txt", sep="\t",header=T)
+
+# add coordinates 
+dataset <- merge(admix.id,Meta[,c("Family","Longitude","Latitude")])
+
+```
+
+## Map assests
+
+```{r}
+# Get map data
+world <- ne_countries(scale = "medium", returnclass = "sf")
+map_area <- world %>% filter(continent == "North America") %>%
+  st_crop(xmin = -95, xmax = -59, ymin = 32, ymax = 49)
+
+plot(map_area)
+bbox = st_bbox(map_area)
+
+# spruce range
+little_range<-st_read('../../../datashare/Spruce/SpatialData/rangemaps/spruce/picerube/picerube.shp')
+bs_range<-st_read('../../../datashare/Spruce/SpatialData/rangemaps/spruce/picemariana/picemari.shp')
+
+# state boundary
+# states <- st_as_sf(map("state", plot = FALSE, fill = TRUE)) # old
+
+# Get US states
+us_states <- ne_states(country = "united states of america", returnclass = "sf")
+
+# Get Canadian provinces and territories
+canada_provinces <- ne_states(country = "canada", returnclass = "sf")
+
+# Combine US states and Canadian provinces
+states <- rbind(us_states, canada_provinces)
+
+
+# world_sf <- st_as_sf(world)
+
+lakes <- ne_download(scale = 10, type = "lakes", category = "physical", 
+                     returnclass = "sf")
+
+# setting the projection
+# world_sf <- st_as_sf(world, coords = c("long", "lat"), crs = 4326)
+lakes_transformed <- st_transform(lakes, st_crs(map_area))
+little_range_sf <- st_transform(little_range, st_crs(map_area))
+bs_range_sf <- st_transform(bs_range, st_crs(map_area))
+states_sf <- st_transform(states, st_crs(map_area))
+
+
+
+# Ensure all data is in the same coordinate system
+print(st_crs(map_area))
+target_crs <- st_crs(4326)
+
+map_area <- st_transform(map_area, target_crs)
+bs_range_sf <- st_transform(bs_range_sf, target_crs)
+little_range_sf <- st_transform(little_range_sf, target_crs)
+states <- st_transform(states, target_crs)
+lakes_transformed <- st_transform(lakes_transformed, target_crs)
+
+print(st_crs(bs_range_sf))
+print(st_crs(little_range_sf))
+print(st_crs(states_sf))
+print(st_crs(lakes_transformed))
+```
+
+```{r}
+# Determine appropriate UTM zone based on your data's location
+utm_zone <- floor((mean(st_coordinates(map_area)[,1]) + 180)/6) + 1
+utm_crs <- st_crs(paste0("+proj=utm +zone=", utm_zone, " +datum=WGS84"))
+
+map_area_projected <- st_transform(map_area, utm_crs)
+bs_range_projected <- st_transform(bs_range_sf, utm_crs)
+little_range_projected <- st_transform(little_range_sf, utm_crs)
+states_projected <- st_transform(states_sf, utm_crs)
+lakes_projected <- st_transform(lakes_transformed, utm_crs)
+
+# snap geometries together
+tolerance <- 1e-9  # Adjust as needed (in meters for UTM)
+bs_range_snapped <- st_snap(bs_range_projected, map_area_projected, tolerance)
+lakes_snapped <- st_snap(lakes_projected, map_area_projected, tolerance)
+little_range_snapped <- st_snap(little_range_projected, map_area_projected, tolerance)
+states_snapped <- st_snap(states_projected, map_area_projected, tolerance)
+
+
+
+# transform back to WGS84
+bs_range_sf <- st_transform(bs_range_snapped, 4326)
+little_range_sf <- st_transform(little_range_snapped, 4326)
+states_sf <- st_transform(states_snapped, 4326)
+lakes_transformed <- st_transform(lakes_snapped, 4326)
+
+# # ensure the geometries are valid 
+bs_range_sf <- st_make_valid(bs_range_sf)
+little_range_sf <- st_make_valid(little_range_sf)
+states_sf <- st_make_valid(states_sf)
+lakes_transformed <- st_make_valid(lakes_transformed)
+
+```
+
+### Elevation data   
+
+- Run once 
+```{r echo = T, eval = F}
+# Get elevation data
+# elevation <- get_elev_raster(world %>% filter(continent == "North America"), z = 7)
+
+# Use elevatr to get elevation data
+elev <- elevatr::get_elev_raster(
+  locations = map_area, z = 10) # , clip = 'locations'
+
+# saveRDS(elev,"./elevatr/elev_north_america_zoom_10")
+
+# convert to terra and mask area of interest
+mdt <- rast(elev) %>% 
+         mask(vect(map_area))
+
+# load this for future analysis
+# saveRDS(mdt,"./elevatr/elev_north_america_masked_zoom_10_2")
+plot(mdt)
+```
+
+```{r}
+# load saved data 
+elev <- readRDS("./elevatr/elev_north_america_zoom_10")
+
+mdt <- readRDS("./elevatr/elev_north_america_masked_zoom_10_2")
+
+plot(mdt)
+```
+
+### Test different palettes  
+```{r}
+# Hypso gradient
+grad_hypso <- hypso.colors2(10, "dem_poster")
+
+
+# Try some options, but we need to be aware of the values of our raster
+
+r_limits <- minmax(mdt) %>% as.vector()
+
+# Rounded to lower and upper 500
+r_limits <- c(floor(r_limits[1] / 200), ceiling(r_limits[2] / 200)) * 200
+
+# And making min value to 0.
+r_limits <- pmax(r_limits, 0)
+
+# testing
+elevt_test <- ggplot() +
+  geom_spatraster(data = mdt)
+
+# Create a helper function
+
+plot_pal_test <- function(pal) {
+  elevt_test +
+    scale_fill_hypso_tint_c(
+      limits = r_limits,
+      palette = pal
+    ) +
+    ggtitle(pal) +
+    theme_minimal()
+}
+
+plot_pal_test("etopo1_hypso")
+plot_pal_test("dem_poster")
+plot_pal_test("spain") # chosen 
+plot_pal_test("pakistan")
+plot_pal_test("utah_1")
+plot_pal_test("wiki-2.0_hypso")
+plot_pal_test("dem_screen")
+```
+
+### Themeing 
+```{r}
+# load font
+myload_fonts <- function(fontname, family,
+                         fontdir = tempdir()) {
+  fontname_url <- utils::URLencode(fontname)
+  fontzip <- tempfile(fileext = ".zip")
+  download.file(paste0("https://fonts.google.com/download?family=", fontname_url),
+    fontzip,
+    quiet = TRUE,
+    mode = "wb"
+  )
+  unzip(fontzip,
+    exdir = fontdir,
+    junkpaths = TRUE
+  )
+
+  # Load fonts
+  paths <- list(
+    regular = "Regular.ttf",
+    bold = "Bold.ttf",
+    italic = "Italic.ttf",
+    bolditalic = "BoldItalic.ttf"
+  )
+
+
+  namefile <- gsub(" ", "", fontname)
+  paths_end <- file.path(
+    fontdir,
+    paste(namefile, paths, sep = "-")
+  )
+
+
+  names(paths_end) <- names(paths)
+
+  sysfonts::font_add(family,
+    regular = paths_end["regular"],
+    bold = paths_end["bold"],
+    italic = paths_end["italic"],
+    bolditalic = paths_end["bolditalic"]
+  )
+
+  return(invisible())
+}
+
+# Theming
+myload_fonts("Noto Serif", "notoserif", "~/R/googlefonts")
+showtext::showtext_auto()
+
+# Adjust text size
+base_text_size <- 30
+```
+
+
+## Introgression plot - version 1.0 - for checking the data 
+
+```{r}
+# tidy up the ancestry data frame
+dataset2 <- dataset[,c("Family","q1","q2","Longitude","Latitude")]
+dataset2$Family <- as.factor(dataset2$Family)
+dataset2$q1 <- round(dataset2$q1,3)
+dataset2$q2 <- round(dataset2$q2,3)
+dataset2$radius <- dataset2$q2
+colnames(dataset2) <- c("Family","RedSpruce","BlackSpruce","Longitude","Latitude","Radius")
+
+```
+
+
+```{r}
+## introgression map
+int_map <- ggplot() +
+  # Add bg
+  geom_rect(aes(xmin = -90, xmax = -59, ymin = 34, ymax = 49), fill = "white", color = NA) +
+  # base map
+  geom_sf(data = map_area, fill = "grey90", colour = "black", lwd = 0.4) +
+  # Add state lines
+  geom_sf(data = states_sf, fill = NA, color = "black", size = 0.6) +  
+  # Add littles range for spruces
+  geom_sf(data = bs_range_sf, colour = "black", lwd = 0.4, fill = "grey20", alpha = 0.5) +
+  geom_sf(data = little_range_sf, colour = "black", lwd = 0.4, fill = "#8E063B", alpha = 0.5) +
+  # Add lakes
+  geom_sf(data = lakes_transformed, fill = "white", colour = "black", lwd = 0.4) +
+  # Add ancestry proportions
+  geom_scatterpie2(aes(x = Longitude, y = Latitude, r = 0.25), 
+                   data = dataset2 %>% filter(Radius < 0.75), 
+                   cols = c("RedSpruce", "BlackSpruce"), color = "black",
+                   alpha = 0.8,
+                   legend_name = "Ancestry") +
+  scale_fill_manual(values = c("RedSpruce" = "red", "BlackSpruce" = "black")) + 
+  # Add allopatric BS site
+  geom_point(aes(x = Longitude, y = Latitude), 
+             data = dataset2 %>% filter(Radius > 0.75),
+             shape = 23, size = 5, alpha = 0.9, 
+             fill="orange",color="black") + 
+  geom_rect(aes(xmin = -78.3, xmax = -74.7, ymin = 40, ymax = 42), fill = NA, color = "black", lwd = 1.4) +
+  # map viewable area
+  coord_sf(xlim = c(-95, -59), ylim = c(34, 48), expand = FALSE) +
+  theme_minimal(base_family = "notoserif") +
+  theme(plot.background = element_rect("white", colour = NA),
+        plot.margin = margin(20, 20, 20, 20),
+        plot.caption = element_text(size = base_text_size * 0.2),
+        plot.title = element_text(face = "bold", size = base_text_size * 1.0),
+        axis.text = element_text(size = base_text_size * 0.4),
+        legend.position = "none")
+```
+
+
+```{r}
+dataset3 <- dataset2
+dataset3$Population <- stringr::str_split_i(dataset3$Family,pattern = "_",1)
+
+int_map_inset <- ggplot() +
+  # Add bg
+  geom_rect(aes(xmin = -90, xmax = -59, ymin = 34, ymax = 49), fill = "white", color = NA) +
+  # base map
+  geom_sf(data = map_area, fill = "grey90", colour = "black", lwd = 0.4) +
+  # Add state lines
+  # geom_sf(data = states_sf, fill = NA, color = "black", size = 0.6) +  
+  # Add littles range for spruces
+  geom_sf(data = bs_range_sf, colour = "black", lwd = 0.4, fill = "grey20", alpha = 0.5) +
+  geom_sf(data = little_range_sf, colour = "black", lwd = 0.4, fill = "#8E063B", alpha = 0.5) +
+  # Add lakes
+  geom_sf(data = lakes_transformed, fill = "white", colour = "black", lwd = 0.4) +
+  # Add ancestry proportions
+  geom_scatterpie2(aes(x = Longitude, y = Latitude, r = 0.05), 
+                   data = dataset2 %>% filter(Radius < 0.75), 
+                   cols = c("RedSpruce", "BlackSpruce"),
+                   alpha = 0.7, color = NA,
+                   legend_name = "Ancestry") +
+  scale_fill_manual(values = c("RedSpruce" = "red", "BlackSpruce" = "black")) + 
+  coord_sf(xlim = c(-78.3, -74.7), ylim = c(40, 42), expand = FALSE) +
+  geom_mark_ellipse(data = dataset3,
+                    aes(color = Population,
+                        label = Population,
+                        x = Longitude, y = Latitude)) +
+  theme_minimal(base_family = "notoserif") +
+  theme(plot.background = element_rect("white", colour = NA),
+        plot.margin = margin(20, 20, 20, 20),
+        plot.caption = element_text(size = base_text_size * 0.2),
+        plot.title = element_text(face = "bold", size = base_text_size * 1.0),
+        axis.text = element_text(size = base_text_size * 0.4),
+        legend.position = "none")
+
+# ggsave("./figures/paper_figures/Figure2A_inset.pdf", width = 3000, height = 2500, units = "px")
+
+# Introgression supplementary figure - Pop level labelling
+pop_int_supplementary <- ggplot() +
+  # Add bg
+  geom_rect(aes(xmin = -90, xmax = -59, ymin = 34, ymax = 49), fill = "white", color = NA) +
+  # base map
+  geom_sf(data = map_area, fill = "grey90", colour = "black", lwd = 0.4) +
+  # Add state lines
+  # geom_sf(data = states_sf, fill = NA, color = "black", size = 0.6) +  
+  # Add littles range for spruces
+  geom_sf(data = bs_range_sf, colour = "black", lwd = 0.4, fill = "grey20", alpha = 0.5) +
+  geom_sf(data = little_range_sf, colour = "black", lwd = 0.4, fill = "#8E063B", alpha = 0.5) +
+  # Add lakes
+  geom_sf(data = lakes_transformed, fill = "white", colour = "black", lwd = 0.4) +
+  # Add ancestry proportions
+  geom_scatterpie2(aes(x = Longitude, y = Latitude, r = 0.20), 
+                   data = dataset2 %>% filter(Radius < 0.75), 
+                   cols = c("RedSpruce", "BlackSpruce"),
+                   alpha = 0.7, color = NA,
+                   legend_name = "Ancestry") +
+  scale_fill_manual(values = c("RedSpruce" = "red", "BlackSpruce" = "black")) + 
+  # Add allopatric BS site
+  # geom_text_repel(data = dataset3, aes(x = Longitude, y = Latitude, label = Population, group = Population)) +
+  geom_mark_ellipse(data = dataset3,
+                    aes(color = Population,
+                        label = Population,
+                        x = Longitude, y = Latitude)) +
+  # map viewable area
+  coord_sf(xlim = c(-95, -59), ylim = c(34, 48), expand = FALSE) +
+  # coord_sf(xlim = c(-78.3, -74.7), ylim = c(40, 42), expand = FALSE) +
+  theme_minimal(base_family = "notoserif") +
+  theme(plot.background = element_rect("white", colour = NA),
+        plot.margin = margin(20, 20, 20, 20),
+        plot.caption = element_text(size = base_text_size * 0.2),
+        plot.title = element_text(face = "bold", size = base_text_size * 1.0),
+        axis.text = element_text(size = base_text_size * 0.4),
+        legend.position = "none")
+```
+
+
+## Introgression Map - Version 2.0
+```{r}
+require(conStruct) # conStruct package for admix proportions 
+require(maps)
+require(mapdata)
+require(maptools)  #for shapefiles
+require(scales)  #for transparency
+require(plotrix)
+
+# data long format 
+pie_data <- tidyr::pivot_longer(dataset2,cols=RedSpruce:BlackSpruce, names_to = "Species",values_to="Ancestry")
+
+admix.props <- pie_data$Ancestry
+
+# make.structure.plot(admix.proportions = admix_props)
+
+# Step 1: Reshape the data
+admix_data <- pie_data %>%
+  select(Family, Ancestry, Species) %>%
+  pivot_wider(names_from = Species, values_from = Ancestry, values_fill = 0) %>%
+  arrange(Family)
+
+# Step 2: Create the admixture proportion matrix
+admix_props <- as.matrix(admix_data[, c("RedSpruce", "BlackSpruce")])
+rownames(admix_props) <- admix_data$Family
+
+# Step 3: Create the coordinates matrix
+coords <- pie_data %>%
+  distinct(Family, Longitude, Latitude) %>%
+  arrange(Family) %>%
+  select(Longitude, Latitude) %>%
+  as.matrix()
+
+# Now you have:
+# admix_props: a matrix of admixture proportions
+# coords: a matrix of coordinates
+
+make.structure.plot(admix.proportions = admix_props, sort.by = 1, layer.colors = c("red","black"))
+
+make.admix.pie.plot(admix.proportions = admix_props, coords = coords, radii = 4, layer.colors = c("red","black"))
+
+# maps::map(xlim = range(data.block$coords[,1]) + c(-5,5), ylim = range(data.block$coords[,2])+c(-2,2), col="gray")
+
+
+## map    
+# Define the map boundaries for eastern North America
+xlim <- c(-95, -59)
+ylim <- c(34, 48)
+
+# read layers 
+## BS range
+black_range <- st_read("../../../datashare/Spruce/SpatialData/rangemaps/spruce/picemariana/picemari.shp") 
+black_range_sf <- st_transform(black_range, crs = 4326)
+# RS range
+red_range <- st_read("../../../datashare/Spruce/SpatialData/rangemaps/spruce/picerube/picerube.shp") 
+red_range_sf <- st_transform(red_range, crs = 4326)
+
+library(sf)
+library(scales)
+```
+
+### Admixture plot   
+```{r echo=T, eval=F}
+# Open PDF device
+pdf("./figures/paper_figures/Figure2A_admixture_map_July_2025.pdf", 
+    width = 19,   # width in inches
+    height = 10,   # height in inches
+    pointsize = 12)  # font size
+```
+
+
+```{r}
+# Draw the base map
+map("worldHires","usa", xlim = c(-95, -59), ylim = c(34, 48), col = "gray90", fill = TRUE, border = "gray50")
+map("worldHires","Canada", xlim = c(-95, -59), ylim = c(34, 48), col = "gray90", fill = TRUE, border = "gray50",
+    add=TRUE)
+map("state", xlim = c(-95, -59), ylim = c(34, 48), col = "gray90", fill = TRUE, border = "gray50",
+    add=TRUE)
+# Add lakes
+map("lakes", col = "white", fill = TRUE, add = TRUE)
+# Add custom shape files 
+## BS range
+plot(st_geometry(black_range_sf), add = TRUE, col = scales::alpha("grey50", 0.9), border = NA)
+# RS range
+plot(st_geometry(red_range_sf), add = TRUE, col = scales::alpha("#8E063B", 0.7), border = NA)
+# Add admix proportions
+make.admix.pie.plot(admix.proportions = admix_props, coords = coords, radii = 3.5, layer.colors = c("red","black"),
+                    add=TRUE)
+
+# Increase font sizes
+par(cex.axis = 1.2,   # Axis tick labels
+    cex.lab = 1.5,    # Axis titles
+    cex.main = 1.8)   # Main title
+
+# Add map elements
+map.axes()
+
+# Legend with larger text
+legend("bottomright", 
+        legend = c("Red Spruce", "Black Spruce"), 
+        fill = c("red", "black"), 
+        title = "Ancestry", 
+        bty = "n", 
+        cex = 1.3,     # Increase legend text size
+        title.cex = 1.4) # Increase legend title size
+# Add axis titles
+title(xlab = "Longitude", ylab = "Latitude", line = 2.5, cex.lab = 1.5)
+
+# Add scale bar
+map.scale(x = -75, y = 35, ratio = FALSE, relwidth = 0.15, metric = TRUE, cex = 1.0)
+
+# export pdf - 13 in wide x 7 in height
+# export png 1200 x 674
+```
+
+
+```{r echo=T,eval=F}
+# Close PDF device
+dev.off()
+```
+
+#### Admixture inset plot  
+```{r echo=T, eval=F}
+# Open PDF device
+pdf("./figures/paper_figures/Figure2A_inset_July_2025.pdf", 
+    width = 19,   # width in inches
+    height = 15,   # height in inches
+    pointsize = 12)  # font size
+```
+
+
+```{r}
+# Draw the base map
+map("worldHires","usa", xlim = c(-76.5, -75), ylim = c(40.8, 41.6), col = "gray90", fill = TRUE, border = "gray50")
+# map("worldHires","Canada", xlim = c(-76.5, -74.8), ylim = c(40.8, 41.6), col = "gray90", fill = TRUE, border = "gray50", add=TRUE)
+map("state", xlim = c(-76.5, -75), ylim = c(40.8, 41.6), col = "gray90", fill = TRUE, border = "gray50", add=TRUE)
+# Add lakes
+# map("lakes", col = "white", fill = TRUE, add = TRUE)
+# Add custom shape files 
+## BS range
+plot(st_geometry(black_range_sf), add = TRUE, col = scales::alpha("grey50", 0.3), border = NA)
+# RS range
+plot(st_geometry(red_range_sf), add = TRUE, col = scales::alpha("#8E063B", 0.2), border = NA)
+
+# Add random jitter to coordinates before plotting
+jitter_amount <- 0.002  # Adjust this value as needed
+coords_jittered <- coords
+coords_jittered[,1] <- jitter(coords[,1], amount = jitter_amount)
+coords_jittered[,2] <- jitter(coords[,2], amount = jitter_amount)
+
+# Define colors with transparency
+layer.colors <- c(adjustcolor("red", alpha.f = 0.5),
+                  adjustcolor("black", alpha.f = 0.5))
+
+# Add admix proportions
+make.admix.pie.plot(admix.proportions = admix_props, coords = coords, radii = 20, layer.colors = layer.colors,
+                    add=TRUE)
+
+# Increase font sizes
+par(cex.axis = 1.2,   # Axis tick labels
+    cex.lab = 1.5,    # Axis titles
+    cex.main = 1.8)   # Main title
+
+# Add map elements
+map.axes()
+
+```
+
+
+```{r echo=T,eval=F}
+# Close PDF device
+dev.off()
+```
+
+### topographic maps  
+```{r}
+library(tidyterra)  # for the function hypso.colors()
+topo_pal <- hypso.colors(n = 10, palette = "dem_poster")
+
+
+
+```
+
+```{r}
+map_meta <- Meta %>% filter(Experiment == "NSF")
+map_meta$Region <- plyr::revalue(map_meta$Region, c("C" = "Core", "M" = "Margin","E" = "Edge"))
+garden <- read.csv("../../BlackSpruce/NSF_gardens.csv", header=T)
+
+require(ggrepel)
+basemap <- ggplot() +
+            geom_spatraster(data = mdt)+
+            geom_sf(data = map_area,
+                              fill = NA,
+                              colour = "black", lwd = 0.4) +
+                      
+            scale_fill_hypso_tint_c(palette = "pakistan") + #limits = r_limits,
+              
+              theme_minimal(base_family = "notoserif") +
+                      # guides(fill = guide_colorsteps(barwidth = 20,
+                      #                                barheight = .5,
+                      #                                title.position = "top")) +
+                      # labs(fill = "m") +
+                      # theme_void() +
+                      
+            theme(plot.background = element_rect("grey97", colour = NA),
+                  plot.margin = margin(20, 20, 20, 20),
+                  plot.caption = element_text(size = base_text_size * 0.5),
+                  plot.title = element_text(face = "bold", size = base_text_size * 1.4),
+                  axis.text = element_text(size = base_text_size * 0.4),
+                  legend.position = "none")+ 
+              # black spruce range
+              geom_sf(data = bs_range_sf, colour = "black", lwd = 0.7, fill = "grey20", alpha = 0.5) +
+              # red spruce range
+              geom_sf(data = little_range, color = NA,lwd = 1.3, fill="#8E063B",alpha = 0.6)+
+              # Add lakes
+              geom_sf(data = lakes_transformed, fill = "#A9DEF9") + # , colour = "black", lwd = 0.4
+              coord_sf(xlim = c(-85, -59), ylim = c(34, 48), expand = FALSE) #+
+              # scale_y_continuous(breaks=c(37,37.5,38, 38.5,39, 39.5,40))
+
+# All labels should be to the right of 3.
+x_limits <- c(-70, NA)
+
+basemap + geom_point(data=map_meta,
+                     aes(x=Longitude ,y=Latitude, shape = Region), size = 4.5, alpha = 0.4, fill = "#66CDAA", color="black",
+                     position = position_jitter(w = 0.05, h = 0)) +
+              scale_shape_manual(values = c(21,23,24)) + 
+          geom_label_repel(data=garden, color="black", fill = "white", fontface = 'bold', family = 'Arial',
+                     aes(x=Longitude ,y=Latitude, label=Garden),
+                     size = 4.5,  xlim  = x_limits, label.r = 0, label.padding = 0.45) +
+          geom_mark_ellipse(data = map_meta, label.family = "Arial",
+                            con.cap = 0, label.position = "above",
+                             label.buffer = unit(0.8, "mm"),
+                     aes(group = Region, label = Region, x = Longitude, y = Latitude)) +
+          geom_point(data=garden,
+                     aes(x=Longitude ,y=Latitude), size = 5, fill = "white", color="black", shape=22)
+          
+
+# ggsave("./figures/paper_figures/Figure1A.pdf", width = 4000, height = 3500, units = "px")
+# ggsave("./figures/paper_figures/Figure1A_editing.pdf", width = 4000, height = 3500, units = "px")
+
+```
+
+# end here
+
+```{r}
+simple_basemap <- ggplot() +
+                  geom_spatraster(data = mdt)+
+                  geom_sf(data = map_area,
+                                    fill = NA,
+                                    colour = "grey97", lwd = 0.4) +
+                            # scale_fill_hypso_tint_c() +
+                  # geom_sf_label(aes(label=NAME))+
+                  scale_fill_hypso_tint_c(limits = r_limits,palette = "etopo1_hypso") +
+                    
+                    theme_minimal(base_family = "notoserif") +
+                            guides(fill = guide_colorsteps(barwidth = 20,
+                                                           barheight = .5,
+                                                           title.position = "top")) +
+                            labs(fill = "m") +
+                            # theme_void() +
+                            
+                  theme(plot.background = element_rect("grey97", colour = NA),
+                        plot.margin = margin(20, 20, 20, 20),
+                        plot.caption = element_text(size = base_text_size * 0.5),
+                        plot.title = element_text(face = "bold", size = base_text_size * 1.4),
+                        axis.text = element_text(size = base_text_size * 0.7))+ 
+                      # red spruce range
+                    geom_sf(data = little_range, color = "#8E063B",lwd = 1.3, fill=NA)+
+                    coord_sf(xlim = c(-90, -59), ylim = c(34, 49), expand = FALSE) #+
+                    # scale_y_continuous(breaks=c(37,37.5,38, 38.5,39, 39.5,40))
+```
+
+# Old code  
+
+```{r}
+usa <- sf::st_as_sf(maps::map("state", fill=TRUE, plot =FALSE))
+
+ggpm <- ggplot(usa) +
+          geom_sf(aes(fill = ID == "texas"), colour = "grey20") +
+          coord_sf(default_crs = sf::st_crs(4326), ylim = c(10, 50)) + 
+          theme(legend.position = "none") +
+          scale_fill_manual(values = c("TRUE" = "red", "FALSE" = "steelblue4"))
+
+
+ggpm + geom_magnify(aes(from = ID == "texas"),
+                    to = c(-125, -98, 10, 30), 
+                    shadow = TRUE, linewidth = 1, colour = "orange2",
+                    shape = "outline", 
+                    aspect = "fixed", 
+                    expand = 0) 
+```
+
+
+
+```{r}
+inset_config <- configure_inset(
+  shape_sf(states %>% filter(name == "Pennsylvania")),
+  scale = 2,
+  translation = c(10, -5)
+)
+library(ggmapinset)
+ggplot() +
+  # geom_rect_inset(aes(xmin = -90, xmax = -59, ymin = 34, ymax = 49), fill = "white", color = NA) +
+  # geom_sf_inset(data = map_area, fill = "grey90", colour = "black", lwd = 0.4) +
+  # geom_sf_inset(data = states_sf, fill = NA, color = "black", size = 0.6) +
+  # geom_sf_inset(data = bs_range_sf, colour = "black", lwd = 0.4, fill = "grey20", alpha = 0.5) +
+  # geom_sf_inset(data = little_range_sf, colour = "black", lwd = 0.4, fill = "#8E063B", alpha = 0.5) +
+  # geom_sf_inset(data = lakes_transformed, fill = "white", colour = "black", lwd = 0.4) +
+  # geom_scatterpie2_inset(aes(x = Longitude, y = Latitude, r = 0.27), 
+  #                  data = dataset2 %>% filter(Radius < 0.75), 
+  #                  cols = c("RedSpruce", "BlackSpruce"),
+  #                  alpha = 0.5,
+  #                  legend_name = "Ancestry") +
+  # scale_fill_manual(values = c("RedSpruce" = "red", "BlackSpruce" = "black")) + 
+  geom_point_inset(aes(x = Longitude, y = Latitude), 
+             data = dataset2 %>% filter(Radius > 0.75),
+             shape = 23, size = 5, alpha = 0.8, 
+             fill="orange", color="black") + 
+  geom_inset_frame() +
+  coord_sf_inset(inset_config, expand = FALSE) +
+  theme_minimal(base_family = "notoserif") +
+  theme(plot.background = element_rect("white", colour = NA),
+        plot.margin = margin(20, 20, 20, 20),
+        plot.caption = element_text(size = base_text_size * 0.2),
+        plot.title = element_text(face = "bold", size = base_text_size * 1.0),
+        axis.text = element_text(size = base_text_size * 0.4))
+
+inset_cfg <- configure_inset(
+  shape_circle(
+    centre =  sf::st_centroid(states[states$name == "Pennsylvania",]),
+    radius = 50
+  ),
+  scale = 2,
+  units = "mi",
+  translation = c(42, -75)
+)
+
+
+int_map + 
+  coord_sf_inset(inset_cfg) + coord_sf(xlim = c(-90, -59), ylim = c(34, 48), expand = FALSE)
+
+```
+
+
+
+```{r}
+# version 2
+intmap_v2 <- ggplot() +
+             # Add bg
+            geom_rect(aes(xmin = -90, xmax = -59, ymin = 34, ymax = 49), fill = "white", color = NA) +
+            # base map
+            geom_sf(data = map_area, fill = "grey90", colour = "black", lwd = 0.4) +
+            geom_sf(data = bs_range_sf, colour = "black", lwd = 0.4, fill = "grey20", alpha = 0.5) +
+            geom_sf(data = little_range_sf, colour = "black", lwd = 0.4, fill = "#8E063B", alpha = 0.5) +
+            geom_sf(data = states, fill = NA, color = "black", size = 0.6) +  # Add state lines
+            # lakes
+            geom_sf(data = lakes_transformed, fill = "white", colour = "black", lwd = 0.4) +
+             
+            geom_point(data = dataset2 %>% filter(BlackSpruce < 0.75),
+                       aes(x = Longitude, y = Latitude, fill = BlackSpruce), 
+                       size = 8, shape = 21, position = position_jitter()) + 
+            scale_fill_gradient("BlackSpruce", low = "white", high = "#251714FF") +
+            geom_point(aes(x = Longitude, y = Latitude), 
+                       data = dataset2 %>% filter(Radius > 0.75),
+                       shape = 23, size = 5, alpha = 0.8, 
+                       fill="orange",color="black") + 
+            # geom_label_repel(data=dataset2 %>% filter(Radius > 0.75),
+            #                  aes(label=Family,x = Longitude, y = Latitude), size = 10) +
+            coord_sf(xlim = c(-90, -59), ylim = c(34, 48), expand = FALSE) +
+            theme_minimal(base_family = "notoserif") +
+            theme(plot.background = element_rect("white", colour = NA),
+                  plot.margin = margin(20, 20, 20, 20),
+                  plot.caption = element_text(size = base_text_size * 0.2),
+                  plot.title = element_text(face = "bold", size = base_text_size * 1.0),
+                  axis.text = element_text(size = base_text_size * 0.4))
+
+intmap_v2 +
+```
+
+
+```{r}
+library(ggmapinset)
+
+# Define the inset configuration for Pennsylvania
+pa_inset <- configure_inset(
+  shape_sf(map_area %>% filter(NAME == "Pennsylvania")),
+  scale = 2,
+  translation = c(10, -5)
+)
+
+ggplot() +
+  # Add bg
+  geom_rect_inset(aes(xmin = -90, xmax = -59, ymin = 34, ymax = 49), fill = "white", color = NA) +
+  # base map
+  geom_sf_inset(data = map_area, fill = "grey90", colour = "black", lwd = 0.4) +
+  geom_sf_inset(data = bs_range_sf, colour = "black", lwd = 0.4, fill = "grey20", alpha = 0.5) +
+  geom_sf_inset(data = little_range_sf, colour = "black", lwd = 0.4, fill = "#8E063B", alpha = 0.5) +
+  geom_sf_inset(data = states, fill = NA, color = "black", size = 0.6) +  # Add state lines
+  # lakes
+  geom_sf_inset(data = lakes_transformed, fill = "white", colour = "black", lwd = 0.4) +
+  
+  geom_scatterpie2_inset(aes(x = Longitude, y = Latitude, r = 0.27), 
+                   data = dataset2 %>% filter(Radius < 0.75), 
+                   cols = c("RedSpruce", "BlackSpruce"),
+                   alpha = 0.5,
+                   legend_name = "Ancestry") +
+  scale_fill_manual(values = c("RedSpruce" = "red", "BlackSpruce" = "black")) + 
+  
+  geom_point_inset(aes(x = Longitude, y = Latitude), 
+             data = dataset2 %>% filter(Radius > 0.75),
+             shape = 23, 
+             size = 5, alpha = 0.8, fill="orange", color="black") + 
+  
+  geom_inset_frame() +
+  coord_sf_inset(pa_inset, expand = FALSE) +
+  
+  theme_minimal(base_family = "notoserif") +
+  theme(plot.background = element_rect("white", colour = NA),
+        plot.margin = margin(20, 20, 20, 20),
+        plot.caption = element_text(size = base_text_size * 0.2),
+        plot.title = element_text(face = "bold", size = base_text_size * 1.0),
+        axis.text = element_text(size = base_text_size * 0.4))
+
+```
+
+
+```{r}
+basemap2 <- ggplot() +
+  geom_spatraster(data = mdt)+
+  geom_sf(data = map_area,
+                    fill = NA,
+                    colour = "grey97", lwd = 0.4) +
+            # scale_fill_hypso_tint_c() +
+  # geom_sf_label(aes(label=NAME))+
+  # scale_fill_hypso_tint_c(limits = r_limits,palette = "etopo1_hypso") +
+    
+    theme_minimal(base_family = "notoserif") +
+            # guides(fill = guide_colorsteps(barwidth = 20,
+            #                                barheight = .5,
+            #                                title.position = "top")) +
+            # labs(fill = "m") +
+            # theme_void() +
+            
+  theme(plot.background = element_rect("grey97", colour = NA),
+        plot.margin = margin(20, 20, 20, 20),
+        plot.caption = element_text(size = base_text_size * 0.5),
+        plot.title = element_text(face = "bold", size = base_text_size * 1.4),
+        axis.text = element_text(size = base_text_size * 0.7))+ 
+      # red spruce range
+    geom_sf(data = little_range, color = "#8E063B",lwd = 1.3, fill=NA)+
+    coord_sf(xlim = c(-90, -59), ylim = c(34, 49), expand = FALSE)
+   
+basemap + geom_point(data=dataset[dataset$q2<0.75,], aes(x=Longitude, y=Latitude, color=q2), 
+                           alpha = 1, size = 5, position="jitter")
+
+dataset2 <- dataset[,c("Family","q1","q2","Longitude","Latitude")]
+dataset2$Family <- as.factor(dataset2$Family)
+dataset2$q1 <- round(dataset2$q1,3)
+dataset2$q2 <- round(dataset2$q2,3)
+colnames(dataset2) <- c("Family","A","B","Longitude","Latitude")
+
+p + geom_scatterpie(aes(x = Longitude, y = Latitude, group =Family), 
+                  data = dataset2, 
+                  cols = c("A","B"),
+                  alpha = 0.8) +
+   scale_fill_discrete() +
+    coord_sf(xlim = c(-90, -59), ylim = c(34, 49), expand = FALSE)
+
+require(scatterpie)
+basemap + 
+  geom_scatterpie(aes(x = Longitude, y = Latitude, group = Family), 
+                  data = dataset2, 
+                  cols = "letters", color=NA,
+                  alpha = 0.8) 
+
+# dataset3 <- dataset
+# dataset3$Family <- as.factor(dataset3$Family)
+# dataset3$q1 <- round(dataset3$q1,3)
+# dataset3$q2 <- round(dataset3$q2,3)
+# dataset3$q1 <- as.factor(dataset3$q1)
+# dataset3$q2 <- as.factor(dataset3$q2)
+
+ggplot() + geom_scatterpie(aes(x = Longitude, y = Latitude, group = Family), 
+                  data = dataset2, 
+                  cols = c("q1", "q2"), 
+                  alpha = 0.8) + 
+
+world <- map_data('world')
+set.seed(123)
+long <- rnorm(50, sd=100)
+lat <- rnorm(50, sd=50)
+d <- data.frame(long=long, lat=lat)
+d <- with(d, d[abs(long) < 150 & abs(lat) < 70,])
+n <- nrow(d)
+d$region <- factor(1:n)
+d$A <- abs(rnorm(n, sd=1))
+d$B <- abs(rnorm(n, sd=2))
+d$C <- abs(rnorm(n, sd=3))
+d$D <- abs(rnorm(n, sd=4))
+d$radius <- 6 * abs(rnorm(n))
+p <- ggplot(world, aes(long, lat)) +
+    geom_map(map=world, aes(map_id=region), fill=NA, color="black") +
+    coord_quickmap()
+p + geom_scatterpie(aes(x=long, y=lat, group=region, r=radius),
+                    data=d, cols=LETTERS[1:4], color=NA, alpha=.8)
+
+
+
+p + geom_scatterpie(aes(x=long, y=lat, group=region, r=radius),
+                    data=d, cols=c("A","B","C","D"), color=NA, alpha=.8)
+
+basemap +
+  # geom_spatraster(data = mdt)+
+  # geom_sf(data = map_area,
+  #                   fill = NA,
+  #                   colour = "grey97", lwd = 0.4) +
+  geom_scatterpie(aes(x = Longitude, y = Latitude, group = Family), 
+                  data = dataset3, 
+                  cols = c("q1", "q2"),
+                  alpha = 0.8) +
+  scale_fill_discrete()
+
+
+basemap + geom_scatterpie(aes(x = Longitude, y = Latitude), 
+                  data = pie_data, long_format = T,
+                  cols = c("Species","Ancestry"),
+                  alpha = 0.8)
+    
+
+# dataset2 <- dataset
+# dataset2$q1 <- as.factor(dataset2$q1)
+# dataset2$q2 <- as.factor(dataset2$q2)
+
+
+
+ggplot() +
+  geom_raster(data = as.data.frame(elevation, xy = TRUE), aes(x = x, y = y, fill = layer)) +
+  scale_fill_viridis_c(option = "inferno", name = "Elevation") +
+  geom_sf(data = world %>% filter(continent == "North America"), fill = NA, color = "black") +
+  coord_sf(xlim = c(-100, -60), ylim = c(35, 55)) +
+  geom_scatterpie(aes(x = Longitude, y = Latitude, group = Family), 
+                  data = dataset, 
+                  cols = c("q1", "q2"),
+                  alpha = 0.8) +
+  theme_minimal() +
+  theme(panel.background = element_rect(fill = "grey90"),
+        panel.grid = element_blank()) +
+  labs(title = "Eastern North America Ancestry Map with Elevation")
+
+
+############### start here
+
+
+
+ggplot() +
+  geom_sf(data = world %>% filter(continent == "North America"), fill = "white", color = "white") +
+  geom_sf(data = ne_coastline(scale = "medium", returnclass = "sf"), color = "blue") +
+  # geom_sf(data = ne_lakes(scale = "medium", returnclass = "sf"), fill = "blue", color = "blue") +
+  coord_sf(xlim = c(-100, -60), ylim = c(35, 55)) +
+  geom_scatterpie(aes(x = Longitude, y = Latitude, group = Family), 
+                  data = dataset, 
+                  cols = c("ancestry_score1", "ancestry_score2", "ancestry_score3"),
+                  alpha = 0.8) +
+  theme_minimal() +
+  labs(title = "Eastern North America Ancestry Map")
+```
+
+
+```{r}
+# source: https://wvgis.wvu.edu/data/dataset.php?ID=455
+# load data WV range map
+# WV_area <- st_read('./redSpruceCoverWV_WVDNR_utm83_2013_shp/redSpruceCoverWV_WVDNR_utm83_2013.shp')
+# plot(WV_area)
+# ggplot() + geom_sf(WV_area) +
+#   theme_minimal()
+```
+
+
+# oct 2023 - current working code
+```{r}
+# data
+info_inds <- read.table("../Info_samples_revised.txt", header=T)
+info_pops <- info_inds[!duplicated(info_inds$Site),-c(1,3,9,10)]
+info_pops$Region <- factor(info_pops$Region, levels = c("C","M","E"),
+                                             labels = c("Core","Margin","Edge"))
+info_pops$Longitude <- -(info_pops$Longitude)
+
+# sources
+Source_maryland <- info_pops %>% filter(info_pops$Region=="Edge" & !info_pops$State%in%c("NC","TN","VA") &
+                                          !info_pops$Site%in%c("XCV","HR"))
+Source_west_virginia <- info_pops %>% filter(info_pops$Region=="Edge" & info_pops$State=="WV" &
+                                               !info_pops$Site%in%c("XCV","HR"))
+
+Source_virginia <- info_pops %>% filter(info_pops$Region=="Edge"  & (info_pops$State=="WV" & 
+                                        !info_pops$Site%in%c("XCV") | info_pops$Site%in%c("GMF","CR","DG","RP")))
+Source_maryland$Group <- "Unselected source"
+Source_maryland[Source_maryland$Site %in% c("XCS","XDS","XPK"),"Group"] <- "Selected source"
+
+Source_west_virginia$Group <- "Unselected source"
+Source_west_virginia[Source_west_virginia$Site %in% c("XCS","XDS","XPK","XSK"),"Group"] <- "Selected source"
+
+Source_virginia$Group <- "Unselected source"
+Source_virginia[Source_virginia$Site %in% c("BFA","KOS","XDS","XPK"),"Group"] <- "Selected source"
+
+
+# sites
+site_md1 <- c("Finzel swamp","MD","Edge",39.703,-78.940,NA, "Restoration site")
+site_md2 <- c("Cranesville swamp","MD","Edge",39.550,-79.479,NA, "Restoration site")
+site_wv <- c("Spruce Mountain GMA","WV","Edge",38.691, -79.599,NA, "Restoration site")
+site_va <- c("Clinch Mountain WMA","VA","Edge",36.925, -81.879,NA, "Restoration site")
+
+# merge
+Source_maryland <- as.data.frame(rbind(Source_maryland,site_md1,site_md2))
+Source_maryland <- type.convert(Source_maryland, as.is = TRUE)
+Source_maryland$Group <- factor(Source_maryland$Group, levels = c("Restoration site","Selected source","Unselected source"))
+
+Source_west_virginia <- as.data.frame(rbind(Source_west_virginia,site_wv))
+Source_west_virginia <- type.convert(Source_west_virginia, as.is = TRUE)
+Source_west_virginia$Group <- factor(Source_west_virginia$Group, levels = c("Restoration site","Selected source","Unselected source"))
+
+Source_virginia <- as.data.frame(rbind(Source_virginia,site_va))
+Source_virginia <- type.convert(Source_virginia, as.is = TRUE)
+Source_virginia$Group <- factor(Source_virginia$Group, levels = c("Restoration site","Selected source","Unselected source"))
+
+
+
+
+```
+
+
+```{r}
+# testing 
+# read in shapefile for map
+n_america <- read_sf("../../Maps/geoBoundariesCGAZ_ADM0/geoBoundariesCGAZ_ADM0.shp")
+plot(n_america, max.plot=1)
+
+# project polygons into new CRS (NAD83)
+n_america_proj <- st_transform(n_america, crs = st_crs(4269))
+
+
+# Get US states and water bodies
+states <- st_as_sf(maps::map("world", plot = FALSE, fill = TRUE))
+
+states_east <- states %>% filter(ID %in% c("alabama", "connecticut", "delaware", "florida", "georgia", "illinois", "indiana", "kentucky", "maine", "maryland", "massachusetts", "michigan", "new hampshire", "new jersey", "new york", "north carolina", "ohio", "pennsylvania", "rhode island", "south carolina", "tennessee", "vermont", "virginia", "west virginia"))
+
+water <- ne_download(scale = "medium", type = "lakes", category = "physical", returnclass = "sf")
+
+plot(states)
+plot(states_east)
+```
+
+
+```{r}
+# source: https://dominicroye.github.io/en/2022/hillshade-effects/
+
+us_states <- states()
+map_area <- us_states[us_states$NAME %in%  c("West Virginia","Virginia","Maryland","Pennsylvania","Tennessee","North Carolina"), ]
+plot(map_area, max.plot=1)
+plot(us_states, max.plot=1)
+
+# spruce range
+little_range<-st_read('../../../datashare/Spruce/SpatialData/rangemaps/spruce/picerube/picerube.shp')
+
+bbox = st_bbox(map_area)
+# borders = little_range %>% st_crop(bbox + c(-2, -2, 2, 2))
+
+
+# Use elevatr to get elevation data
+elev <- elevatr::get_elev_raster(
+  locations = map_area$geometry, z = 10) # , clip = 'locations'
+
+# saveRDS(elev,"./elevatr/elev_PA_MD_WV_VA_TN_NC_z11")
+
+plot(elev)
+
+# convert to terra and mask area of interest
+mdt <- rast(elev) %>% 
+         mask(vect(map_area))
+
+# load this for future analysis
+# saveRDS(mdt,"./elevatr/elev_PA_MD_WV_VA_TN_NC_z11_masked")
+
+names(mdt) <- "alt"
+
+mdt <- mdt %>%
+  mutate(alt = pmax(0, alt))
+
+# load this for future analysis
+# saveRDS(mdt,"./elevatr/elev_PA_MD_WV_VA_TN_NC_z11_masked")
+
+plot(mdt)
+
+# reproject
+# mdt <- project(mdt, crs(map_area))
+```
+
+
+```{r eval =F, echo=F}
+# reproject vect
+# suiz <- st_transform(suiz, st_crs(suiz_lakes))
+
+# convert the raster into a data.frame of xyz
+mdtdf <- as.data.frame(mdt, xy = TRUE)
+names(mdtdf)[3] <- "alt"
+
+# mdtdf <- mdtdf %>%
+#   mutate(alt = pmax(0, alt))
+
+```
+
+
+```{r}
+# Hypso gradient
+grad_hypso <- hypso.colors2(10, "dem_poster")
+
+
+# Try some options, but we need to be aware of the values of our raster
+
+r_limits <- minmax(mdt) %>% as.vector()
+
+# Rounded to lower and upper 500
+r_limits <- c(floor(r_limits[1] / 500), ceiling(r_limits[2] / 500)) * 500
+
+# And making min value to 0.
+r_limits <- pmax(r_limits, 0)
+
+
+# Now lets have some fun with scales from tidyterra
+```
+
+
+```{r}
+elevt_test <- ggplot() +
+  geom_spatraster(data = mdt)
+
+# Create a helper function
+
+plot_pal_test <- function(pal) {
+  elevt_test +
+    scale_fill_hypso_tint_c(
+      limits = r_limits,
+      palette = pal
+    ) +
+    ggtitle(pal) +
+    theme_minimal()
+}
+
+plot_pal_test("etopo1_hypso")
+plot_pal_test("dem_poster")
+plot_pal_test("spain") # chosen + 
+plot_pal_test("pakistan")
+plot_pal_test("utah_1")
+plot_pal_test("wiki-2.0_hypso")
+```
+
+```{r}
+# load font
+myload_fonts <- function(fontname, family,
+                         fontdir = tempdir()) {
+  fontname_url <- utils::URLencode(fontname)
+  fontzip <- tempfile(fileext = ".zip")
+  download.file(paste0("https://fonts.google.com/download?family=", fontname_url),
+    fontzip,
+    quiet = TRUE,
+    mode = "wb"
+  )
+  unzip(fontzip,
+    exdir = fontdir,
+    junkpaths = TRUE
+  )
+
+  # Load fonts
+  paths <- list(
+    regular = "Regular.ttf",
+    bold = "Bold.ttf",
+    italic = "Italic.ttf",
+    bolditalic = "BoldItalic.ttf"
+  )
+
+
+  namefile <- gsub(" ", "", fontname)
+  paths_end <- file.path(
+    fontdir,
+    paste(namefile, paths, sep = "-")
+  )
+
+
+  names(paths_end) <- names(paths)
+
+  sysfonts::font_add(family,
+    regular = paths_end["regular"],
+    bold = paths_end["bold"],
+    italic = paths_end["italic"],
+    bolditalic = paths_end["bolditalic"]
+  )
+
+  return(invisible())
+}
+```
+
+
+```{r}
+# Theming
+myload_fonts("Noto Serif", "notoserif", "~/R/googlefonts")
+showtext::showtext_auto()
+
+# Adjust text size
+base_text_size <- 30
+
+require(ggrepel)
+
+```
+
+# base map
+```{r}
+basemap <- ggplot() +
+  geom_spatraster(data = mdt)+
+  geom_sf(data = map_area,
+                    fill = NA,
+                    colour = "grey97", lwd = 1.2) +
+            # scale_fill_hypso_tint_c() +
+  # geom_sf_label(aes(label=NAME))+
+  scale_fill_hypso_tint_c(limits = r_limits,palette = "spain") +
+    
+    theme_minimal(base_family = "notoserif") +
+            guides(fill = guide_colorsteps(barwidth = 20,
+                                           barheight = .5,
+                                           title.position = "right")) +
+            labs(fill = "m") +
+            # theme_void() +
+            
+  theme(plot.background = element_rect("grey97", colour = NA),
+        plot.margin = margin(20, 20, 20, 20),
+        plot.caption = element_text(size = base_text_size * 0.5),
+        plot.title = element_text(face = "bold", size = base_text_size * 1.4),
+        axis.text = element_text(size = base_text_size * 0.7))+ 
+  
+    # red spruce range
+    geom_sf(data = little_range, color = "#8E063B",lwd = 1.3, fill=NA)+
+    coord_sf(xlim = c(-83, -78.30), ylim = c(36.5, 40), expand = FALSE) + 
+    scale_y_continuous(breaks=c(37,37.5,38, 38.5,39, 39.5,40)) 
+
+basemap_long <- ggplot() +
+  geom_spatraster(data = mdt)+
+  geom_sf(data = map_area,
+                    fill = NA,
+                    colour = "grey97", lwd = 1.2) +
+            # scale_fill_hypso_tint_c() +
+  # geom_sf_label(aes(label=NAME))+
+  scale_fill_hypso_tint_c(limits = r_limits,palette = "spain") +
+    
+    theme_minimal(base_family = "notoserif") +
+            guides(fill = guide_colorsteps(barwidth = 20,
+                                           barheight = .5,
+                                           title.position = "right")) +
+            labs(fill = "m") +
+            # theme_void() +
+            
+  theme(plot.background = element_rect("grey97", colour = NA),
+                plot.margin = margin(20, 20, 20, 20),
+                plot.caption = element_text(size = base_text_size * 0.5),
+                plot.title = element_text(face = "bold", size = base_text_size * 1.4),
+                axis.text = element_text(size = base_text_size * 0.7),
+                legend.position = "bottom",
+                legend.title = element_text(size = base_text_size * 0.8),
+                legend.text = element_text(size = base_text_size * 0.8),
+                legend.key = element_rect("grey50"),
+                legend.spacing.x = unit(0, "pt")
+              ) +
+                # Change guide
+              guides(fill = guide_legend(
+                title = "   m.",
+                direction = "horizontal",
+                nrow = 1,
+                keywidth = 5,
+                keyheight = 0.5,
+                label.position = "bottom",
+                title.position = "right",
+                override.aes = list(alpha = 1)
+              ))+
+  
+    # red spruce range
+    geom_sf(data = little_range, color = "#8E063B",lwd = 1.3, fill=NA)+
+    coord_sf(xlim = c(-83, -78.30), ylim = c(35.5, 40), expand = FALSE) + 
+    scale_y_continuous(breaks=c(36,36.5,37,37.5,38, 38.5,39, 39.5,40)) 
+```
+
+```{r}
+ggplot() +
+  geom_spatraster(data = mdt)+
+  geom_sf(data = map_area,
+                    fill = NA,
+                    colour = "grey97", lwd = 1.2) +
+            # scale_fill_hypso_tint_c() +
+  # geom_sf_label(aes(label=NAME))+
+  scale_fill_hypso_tint_c(limits = r_limits,palette = "spain") +
+    
+    theme_minimal() +
+            guides(fill = guide_colorsteps(barwidth = 20,
+                                           barheight = .5,
+                                           title.position = "bottom")) +
+            labs(fill = "m") + 
+    scale_y_continuous(position="right",sec.axis = sec_axis(~., labels = NULL))+
+            # theme_void() +
+            
+  theme(plot.background = element_rect("grey97", colour = NA),
+                plot.margin = margin(20, 20, 20, 20),
+                plot.caption = element_text(size = base_text_size * 0.5),
+                plot.title = element_text(face = "bold", size = base_text_size * 1.4),
+                axis.text = element_text(size = base_text_size * 0.7),
+                legend.position = "bottom",
+                legend.title = element_text(size = base_text_size * 0.8),
+                legend.text = element_text(size = base_text_size * 0.8),
+                legend.key = element_rect("grey50"),
+                legend.spacing.x = unit(0, "pt"),
+        axis.text.y.right = element_text(margin = unit(c(5, 5, 5, 10), "mm"))
+              ) +
+                # Change guide
+              guides(fill = guide_legend(
+                title = "   m.",
+                direction = "horizontal",
+                nrow = 1,
+                keywidth = 5,
+                keyheight = 0.5,
+                label.position = "bottom",
+                title.position = "right",
+                override.aes = list(alpha = 1)
+              ))+
+  
+    # red spruce range
+    geom_sf(data = little_range, color = "#8E063B",lwd = 1.3, fill=NA)+
+    coord_sf(xlim = c(-83, -78.30), ylim = c(35, 40), expand = FALSE) 
+
+
+ggplot() +
+  geom_spatraster(data = mdt)+
+  # geom_sf(data = map_area,
+                    # fill = NA,
+                    # colour = "grey97", lwd = 1.2)+
+            # scale_fill_hypso_tint_c() +
+  # geom_sf_label(aes(label=NAME))+
+   scale_x_continuous(position = "top")
+
+# breaks=c(35.5,36,36.5,37,37.5,38, 38.5,39, 39.5,40),
+```
+
+
+
+```{r}
+basemap_long+guides(fill="none")
+
+legend_scale <- basemap_long + theme(plot.background = element_rect("grey97", colour = NA),
+                plot.margin = margin(20, 20, 20, 20),
+                plot.caption = element_text(size = base_text_size * 0.5),
+                plot.title = element_text(face = "bold", size = base_text_size * 1.4),
+                axis.text = element_text(size = base_text_size * 0.7),
+                legend.position = "bottom",
+                legend.title = element_text(size = base_text_size * 0.8),
+                legend.text = element_text(size = base_text_size * 0.8),
+                legend.key = element_rect("grey50"),
+                legend.spacing.x = unit(0, "pt")
+              ) +
+                # Change guide
+              guides(fill = guide_legend(
+                title = "   m.",
+                direction = "horizontal",
+                nrow = 1,
+                keywidth = 5,
+                keyheight = 0.5,
+                label.position = "bottom",
+                title.position = "right",
+                override.aes = list(alpha = 1)
+              ))
+
+legend_groups <- basemap_long + theme(plot.background = element_rect("grey97", colour = NA),
+                plot.margin = margin(20, 20, 20, 20),
+                plot.caption = element_text(size = base_text_size * 0.5),
+                plot.title = element_text(face = "bold", size = base_text_size * 1.4),
+                axis.text = element_text(size = base_text_size * 0.7),
+                axis.title=element_text(size=base_text_size* 0.7),
+                legend.position = "right",
+                legend.title = element_text(size = base_text_size * 0.8),
+                legend.text = element_text(size = base_text_size * 0.8),
+                legend.key = element_rect("grey97"),
+                legend.spacing.x = unit(4, "pt")
+              ) +
+              geom_point(data=Source_maryland, aes(x=Longitude, y=Latitude,color=Group,shape=Group), 
+                           alpha = 1, size = 6, position="jitter")+ 
+              scale_color_manual(name = "Legend",
+                                 labels = c("Restoration site", "Selected source", "Unselected source"),
+                                 values = c("#D8152F","#264DFF","black")) + 
+              scale_shape_manual(name = "Legend",
+                                 labels = c("Restoration site", "Selected source", "Unselected source"),
+                                 values = c(17,19,19))+
+              guides(fill="none")
+```
+
+```{r}
+# inset map
+require(maps)
+usa <- map_data('state')
+
+inset <- ggplot(data=usa, aes(x=long, y=lat, group=group)) + 
+          geom_polygon(color = "grey50",fill="white") + 
+          # guides(fill=FALSE) + 
+          # theme(axis.title.x=element_blank(), axis.text.x=element_blank(), axis.ticks.x=element_blank(),
+          #       axis.title.y=element_blank(), axis.text.y=element_blank(), axis.ticks.y=element_blank()) + 
+          # ggtitle('U.S. Map with States') + 
+          # theme_minimal(base_family = "notoserif") +
+          # coord_fixed(1.3) + 
+  coord_sf(xlim = c(-83, -68), ylim=c(45,25),  expand = FALSE)+
+          theme(
+            plot.background = element_rect("grey90", colour = "black"),
+            panel.border=element_rect(color="black"),
+            
+                        # plot.margin = margin(20, 20, 20, 20),
+                        # plot.caption = element_text(size = base_text_size * 0.5),
+                        # plot.title = element_text(face = "bold", size = base_text_size * 1.4),
+                        axis.text = element_blank(),
+                        # 
+                        axis.title.x=element_blank(), 
+                        axis.text.x=element_blank(), 
+                        axis.ticks.x=element_blank(),
+                        axis.title.y=element_blank(), 
+                        axis.text.y=element_blank(), 
+                        axis.ticks.y=element_blank()
+                      ) + labs(y="",x="")+
+  theme_map()+
+          geom_rect(aes(xmin = -78.30, xmax = -83, ymin = 35, ymax = 40), 
+                    color = "blue", inherit.aes = FALSE, fill=NA, lwd=2)
+inset
+
+library("rnaturalearth")
+library("rnaturalearthdata")
+require(sf)
+world <- ne_countries(scale = "medium", returnclass = "sf")
+library("maps")
+states <- st_as_sf(map("state", plot = FALSE, fill = TRUE))
+states <- cbind(states, st_coordinates(st_centroid(states)))
+ggplot(data = world) +
+    geom_sf() +
+    geom_sf(data = states, fill = NA) + 
+    geom_label(data = states, aes(X, Y, label = ID), size = 5, fontface = "bold", 
+        nudge_y = states$nudge_y) +
+    coord_sf(xlim = c(-88, -78), ylim = c(24.5, 33), expand = FALSE)
+
+# xlim = c(-83, -78.30), ylim = c(35.5, 40)
+
+
+  
+
+maps::map("state", interior=FALSE)
+maps::map("state", boundary=FALSE, col="gray", add=TRUE)
+
+# require(mapdata)
+
+
+```
+
+
+```{r}
+require(ggspatial)
+require(tmap)
+MD_plot <- basemap_long + theme(plot.background = element_rect("grey97", colour = NA),
+                plot.margin = margin(20, 20, 20, 20),
+                plot.caption = element_text(size = base_text_size * 0.5),
+                plot.title = element_text(face = "bold", size = base_text_size * 1.4),
+                axis.text = element_text(size = base_text_size * 0.7),
+                axis.title=element_text(size=base_text_size* 0.7),
+                legend.position = "right",
+                legend.title = element_text(size = base_text_size * 0.8),
+                legend.text = element_text(size = base_text_size * 0.8),
+                legend.key = element_rect("grey97"),
+                legend.spacing.x = unit(0, "pt")) +
+              
+              geom_point(data=Source_maryland, aes(x=Longitude, y=Latitude,color=Group,shape=Group), 
+                           alpha = 1, size = 5, position="jitter")+ 
+              scale_color_manual(name = "Legend",
+                                 labels = c("Restoration site", "Selected source", "Unselected source"),
+                                 values = c("#D8152F","#264DFF","black")) + 
+              scale_shape_manual(name = "Legend",
+                                 labels = c("Restoration site", "Selected source", "Unselected source"),
+                                 values = c(17,19,19))+
+                # selected sources
+                # geom_point(data=Source_maryland %>% filter(Source_maryland$Site %in%c("XCS","XDS","XPK","Finzel swamp","Cranesville swamp")),
+                #                    aes(x=Longitude, y=Latitude),
+                #                    size = 4, alpha = 1, color="darkred",position="jitter")+
+              geom_label_repel(data = Source_maryland %>% filter(Source_maryland$Site %in%c("XCS","XDS","XPK","Finzel swamp","Cranesville swamp")),
+                              aes(x=Longitude, y=Latitude, label=Site),
+                              # nudge_x       = 40 ,
+                              size          = 5,
+                              box.padding   = 0.5,
+                              point.padding = 0.5,
+                              # force         = 100,
+                              # segment.size  = 0.8,
+                              segment.color = "black",
+                              # direction     = "x",
+                              # show.legend = FALSE,
+                              max.overlaps = 10) +
+              labs(y="Latitude", x="Longitude",
+                   title = "Maryland") + 
+              guides(fill="none",color="none",shape="none") +
+  
+  annotation_north_arrow(location = "tl", style = north_arrow_fancy_orienteering)
+
+
+```
+
+
+
+```{r}
+WV_plot <- basemap_long + theme(plot.background = element_rect("grey97", colour = NA),
+                plot.margin = margin(20, 20, 20, 20),
+                plot.caption = element_text(size = base_text_size * 0.5),
+                plot.title = element_text(face = "bold", size = base_text_size * 1.4),
+                axis.text = element_text(size = base_text_size * 0.7),
+                axis.title=element_text(size=base_text_size* 0.7),
+                axis.text.y = element_blank(), axis.ticks.y = element_blank(),
+                legend.position = "right",
+                legend.title = element_text(size = base_text_size * 0.8),
+                legend.text = element_text(size = base_text_size * 0.8),
+                legend.key = element_rect("grey97"),
+                legend.spacing.x = unit(0, "pt")) +
+              
+              geom_point(data=Source_west_virginia, aes(x=Longitude, y=Latitude,color=Group,shape=Group), 
+                           alpha = 1, size = 5, position="jitter")+ 
+              scale_color_manual(name = "Legend",
+                                 labels = c("Restoration site", "Selected source", "Unselected source"),
+                                 values = c("#D8152F","#264DFF","black")) + 
+              scale_shape_manual(name = "Legend",
+                                 labels = c("Restoration site", "Selected source", "Unselected source"),
+                                 values = c(17,19,19))+
+                
+              geom_label_repel(data = Source_west_virginia %>% filter(Source_west_virginia$Site %in%c("XCS","XDS","XPK","XSK","Spruce Mountain GMA")),
+                              aes(x=Longitude, y=Latitude, label=Site),
+                              size          = 5,
+                              box.padding   = 0.5,
+                              point.padding = 0.5,
+                              segment.color = "black",
+                              max.overlaps = 10) +
+  labs(y="", x="Longitude",
+                   title = "West Virginia") + guides(fill="none",color="none",shape="none")
+
+
+WV_plot + annotation_custom(ggplotGrob(inset), xmin = -80, xmax = -78.5, 
+                       ymin = 35.5, ymax = 37)
+```
+
+```{r}
+VA_plot <- basemap_long + theme(plot.background = element_rect("grey97", colour = NA),
+                plot.margin = margin(20, 20, 20, 20),
+                plot.caption = element_text(size = base_text_size * 0.5),
+                plot.title = element_text(face = "bold", size = base_text_size * 1.4),
+                axis.text = element_text(size = base_text_size * 0.7),
+                axis.title=element_text(size=base_text_size* 0.7),
+                axis.text.y = element_blank(), axis.ticks.y = element_blank(),
+                legend.position = c(0.75,0.10),
+                legend.title = element_text(size = base_text_size * 0.8),
+                legend.text = element_text(size = base_text_size * 0.8),
+                legend.key = element_rect("grey97"),
+                legend.spacing.x = unit(0, "pt")) +
+              
+              
+              geom_point(data=Source_virginia, aes(x=Longitude, y=Latitude,color=Group,shape=Group), 
+                           alpha = 1, size = 5, position="jitter")+ 
+              scale_color_manual(name = "Legend",
+                                 labels = c("Restoration site", "Selected source", "Unselected source"),
+                                 values = c("#D8152F","#264DFF","black")) + 
+              scale_shape_manual(name = "Legend",
+                                 labels = c("Restoration site", "Selected source", "Unselected source"),
+                                 values = c(17,19,19))+
+                
+              geom_label_repel(data = Source_virginia %>% filter(Source_virginia$Site %in%c("BFA","KOS","XDS","XPK","Clinch Mountain WMA")),
+                              aes(x=Longitude, y=Latitude, label=Site),
+                              size          = 5,
+                              box.padding   = 0.5,
+                              point.padding = 0.5,
+                              segment.color = "black",
+                              max.overlaps = 10) +
+              labs(y="", x="Longitude",
+                   title = "Virginia") + guides(fill="none")
+```
+
+
+```{r}
+require(cowplot)
+legend_bottom <- get_legend(legend_scale + theme(legend.position="bottom"))
+legend_right <- get_legend(legend_groups+ theme(legend.position="right"))
+
+ cowplot::plot_grid(MD_plot,WV_plot,VA_plot,+ theme(legend.position="none"), legend_ba, ncol = 2, rel_widths = c(1,.15))
+
+
+map_grid <- cowplot::plot_grid( MD_plot + theme(legend.position="none"),
+           WV_plot + theme(legend.position="none"),
+           VA_plot + theme(legend.position="none"),
+           align = 'vh',
+           # labels = c("A", "B", "C", "D"),
+           hjust = -1,
+           nrow = 1
+           )
+
+```
+
+```{r}
+require(ggpubr)
+ggarrange(MD_plot,WV_plot,VA_plot, ncol = 3,widths = c(1.1,1,1))
+
+grd1 <- ggarrange(MD_plot,WV_plot,VA_plot, ncol = 3,  widths = c(1.1,1,1), heights=c(1,1,1))
+
+require(cowplot)
+legend_bottom <- get_legend(legend_scale + theme(legend.position="bottom"))
+legend_right <- get_legend(legend_groups+ theme(legend.position="right"))
+leg <-cowplot::plot_grid(legend_bottom, legend_right, ncol = 2, rel_widths = c(1,.5))
+
+
+# dim 2500w 1067h jpg, 10h 24w pdf
+grd2 <- ggarrange(grd1, legend_bottom, nrow = 2,  heights = c(0.95,0.05))
+grd2
+# grd3 <- 
+  # ggarrange(grd2,legend_right, ncol = 2,  widths = c(0.95,0.05))
+
+# cowplot::plot_grid(grd1, leg, nrow = 2)
+
+
+
+
+
+
+```
+
+
+
+```{r}
+# WV
+
+p2 <- ggplot() +
+  geom_spatraster(data = mdt)+
+  geom_sf(data = map_area,
+                    fill = NA,
+                    colour = "white", size=1000) +
+            # scale_fill_hypso_tint_c() +
+  scale_fill_hypso_tint_c(limits = r_limits,palette = "spain") +
+  
+    
+   
+            guides(fill = guide_colorsteps(barwidth = 20,
+                                           barheight = .5,
+                                           title.position = "right")) +
+            labs(fill = "m") +
+            theme_void() +
+            theme(legend.position = "bottom") +
+  
+    # red spruce range
+    geom_sf(data = little_range, color = "darkred",size=1000, fill=NA)+
+  coord_sf(xlim = c(-83, -78.30), ylim = c(36.5, 40), expand = FALSE) + 
+              labs(y="", x="Longitude") + 
+  theme_minimal()+
+  theme(
+    plot.background = element_rect("grey97", colour = NA),
+    plot.margin = margin(20, 20, 20, 20),
+    plot.caption = element_text(size = base_text_size * 0.5),
+    plot.title = element_text(face = "bold", size = base_text_size * 1.4),
+    axis.text = element_text(size = base_text_size * 0.7),
+    legend.position = "bottom",
+    legend.title = element_text(size = base_text_size * 0.8),
+    legend.text = element_text(size = base_text_size * 0.8),
+    legend.key = element_rect("grey50"),
+    legend.spacing.x = unit(0, "pt"),
+    axis.text.y = element_blank(), axis.ticks.y = element_blank()
+  ) +
+    # Change guide
+  guides(fill = guide_legend(
+    title = "   m.",
+    direction = "horizontal",
+    nrow = 1,
+    keywidth = 5,
+    keyheight = 0.5,
+    label.position = "bottom",
+    title.position = "right",
+    override.aes = list(alpha = 1)
+  )) 
+
+require(ggpubr)
+ggarrange(MD_plot,MD_plot,MD_plot, ncol = 3)
+```
+
+
+
+
+# hill shading  -- skipped
+```{r}
+## Create hillshade effect
+
+slope <- terrain(mdt, "slope", unit = "radians")
+aspect <- terrain(mdt, "aspect", unit = "radians")
+hill <- shade(slope, aspect, 30, 270)
+
+# normalize names
+names(hill) <- "shades"
+
+# Hillshading, but we need a palette
+pal_greys <- hcl.colors(1000, "Grays")
+
+ggplot() +
+  geom_spatraster(data = hill) +
+  scale_fill_gradientn(colors = pal_greys, na.value = NA)
+
+# Use a vector of colors
+index <- hill %>%
+  mutate(index_col = rescale(shades, to = c(1, length(pal_greys)))) %>%
+  mutate(index_col = round(index_col)) %>%
+  pull(index_col)
+
+
+# Get cols
+vector_cols <- pal_greys[index]
+
+# Need to avoid resampling
+# and dont use aes
+
+hill_plot <- ggplot() +
+  geom_spatraster(
+    data = hill, fill = vector_cols, maxcell = Inf,
+    alpha = 1
+  )
+
+hill_plot
+```
+
+
+
+```{r}
+# MD data add
+            # all sources
+            geom_point(data=Source_maryland, aes(x=Longitude, y=Latitude), alpha = 0.60, color = "grey22", size = 4)+ 
+            # selected sources
+            geom_point(data=Source_maryland %>% filter(Source_maryland$Site %in%c("XCS","XDS","XPK")),
+                       aes(x=Longitude, y=Latitude), size = 4, alpha = 1, color="darkred")
+#+
+  
+geom_text_repel(data = Source_maryland %>% filter(Source_maryland$Site %in%c("XCS","XDS","XPK")),
+                  aes(x=Longitude, y=Latitude, label=Site),
+                  # nudge_y       = 20 ,
+                  size          = 5,
+                  box.padding   = 2.5,
+                  point.padding = 0.5,
+                  force         = 100,
+                  segment.size  = 0.8,
+                  segment.color = "grey50",
+                  direction     = "x",
+                  show.legend = FALSE)
+
+# estimate the slope
+sl <- terrain(mdt, "slope", unit = "radians")
+plot(sl)
+
+# estimate the aspect or orientation
+asp <- terrain(mdt, "aspect", unit = "radians")
+plot(asp)
+```
+
+
+```{r}
+# Convert elevation raster to matrix
+elmat <- raster_to_matrix(elev)
+
+# Calculate a color for each point on the surface using the surface normals and
+# hemispherical UV mapping.
+sunshade <- elmat %>%
+  sphere_shade(sunangle = 315, texture = 'bw')
+
+# Convert sunshade to raster
+require(recolorize)
+dd <- array_to_RasterStack(
+  sunshade,
+  type = 'stack',
+  alpha_mask = TRUE,
+  return_alpha = FALSE
+)
+
+# Assign dimensions
+dd@extent@xmin <- elev@extent@xmin
+dd@extent@xmax <- elev@extent@xmax
+dd@extent@ymin <- elev@extent@ymin
+dd@extent@ymax <- elev@extent@ymax
+
+# Assign projection
+crs(dd) <- crs(elev)
+
+
+cols <- c('#FFF062', 'green4', 'lightblue', '#D26799')
+ggplot() +
+  # geom_sf(data = lands, aes(fill = OWNER), color = NA) +
+  # geom_sf(data = water, color = NA, fill = 'lightblue', size = 0.6, alpha = 1) +
+  geom_raster(elev)+
+  geom_sf(data = map_area, color = 'black', fill = NA) +
+  # geom_sf_text_repel(data = map_area, aes(label = NAME),
+  #                    size = 2.8, bg.color = 'white', color = 'black') +
+  coord_sf(datum = sf::st_crs(map_area)) +
+  scale_fill_manual(values = alpha(cols, 0.4))
+
+ggRGB(dd, r = 1, g = 2, b = 3, maxpixels = 5e+08) +
+  geom_sf(data = water, color = NA, fill = 'lightblue', size = 0.6, alpha = 1) +
+  geom_sf(data = utah_counties, color = 'white', fill = NA) +
+  geom_sf_text_repel(data = utah_counties, aes(label = NAME),
+                     size = 2.8, bg.color = 'white', color = 'black') +
+  coord_sf(datum = sf::st_crs(utah_counties))
+
+
+
+
+require(rayshader)
+# Convert elevation raster to matrix
+elmat <- raster_to_matrix(dem_terra)
+
+# Calculate a color for each point on the surface using the surface normals and
+# hemispherical UV mapping.
+sunshade <- elmat %>%
+  sphere_shade(sunangle = 315, texture = 'bw')
+
+# Convert sunshade to raster
+dd <- array_to_RasterStack(
+  sunshade,
+  type = 'stack',
+  alpha_mask = TRUE,
+  return_alpha = FALSE
+)
+
+# Assign dimensions
+dd@extent@xmin <- dem_terra@extent@xmin
+dd@extent@xmax <- elev@extent@xmax
+dd@extent@ymin <- elev@extent@ymin
+dd@extent@ymax <- elev@extent@ymax
+
+# Assign projection
+crs(dd) <- crs(elev)
+
+
+
+
+
+require(raster)
+usa_dem <- getData('alt', country='USA', mask=TRUE)
+
+
+require(elevatr)
+
+USA <- ne_countries(scale = 110,
+                    type = "countries",
+                    continent = NULL,
+                    country = "United States",
+                    geounit = NULL,
+                    sovereignty = NULL,
+                    returnclass = c("sp", "sf"))
+plot(USA)
+
+
+sub_world <- world[world$name=="United States",]
+
+elevation <- get_elev_raster(sub_world, z = 9, src = "aws")
+
+
+map <- get_stamenmap( bbox = c(left = 110, bottom = -40, right = 160, top = -10), zoom = 4, maptype = "terrain")
+
+
+ggmap(map) + 
+    theme_void() + 
+    # ggtitle(i) + 
+    theme(
+      plot.title = element_text(colour = "orange"), 
+      panel.border = element_rect(colour = "grey", fill=NA, size=2))
+
+
+```
+
+
+# usmap
+
+```{r}
+require(usmap)
+require(dplyr)
+require(usmapdata)
+
+map <- plot_usmap()
+
+filtered_data <- us_map() %>%
+  filter(x >= min_lon, x <= max_lon, y >= min_lat, y <= max_lat)
+
+ggplot(data = filtered_data, aes(x = x, y = y, group = group)) +
+  geom_polygon(fill = "lightgrey", color = "white") +
+  coord_fixed(xlim = c(min_lon, max_lon), ylim = c(min_lat, max_lat)) +
+  theme_void() +
+  labs(title = "Maryland Map within Bounding Box")
+
+plot_usmap(regions = "states",include = c("MD", "WV", "VA"), labels=T) +
+  labs(title = "") +
+  theme(panel.background = element_rect(color = "black")) #+
+  coord_sf(xlim = c(min(bbx[1,]), max(bbx[1,])), 
+           ylim = c(min(bbx[2,]), max(bbx[2,])),
+           expand = FALSE)
+  
+
+
+
+plot_usmap(data = countypov, values = "pct_pov_2014", include = c("MD", "WV", "VA"), color = "blue") + 
+  scale_fill_continuous(low = "white", high = "blue", name = "Poverty Percentage Estimates", label = scales::comma) + 
+  labs(title = "New England Region", subtitle = "Poverty Percentage Estimates for New England Counties in 2014") +
+  theme(legend.position = "right")
+
+require(tmap)
+require(tmaptools)
+require(tigris)
+
+```
+
+
+# test on thursday
+```{r}
+
+# install.packages(c("sf", "raster", "here", "ggplot2", "viridis"))
+# remotes::install_github("wmgeolab/rgeoboundaries")
+library(rgeoboundaries)
+library(sf)
+library(raster)
+library(here)
+library(ggplot2)
+library(viridis)
+library(dplyr)
+
+library(MODIStsp)
+# Downloading the country boundary of Zimbabwe
+map_boundary <- geoboundaries("Zimbabwe")
+# Defining filepath to save downloaded spatial file
+spatial_filepath <- "LandCoverData/zimbabwe.shp"
+# Saving downloaded spatial file on to our computer
+st_write(map_boundary, paste0(spatial_filepath))
+
+MODIStsp(gui             = FALSE,
+         out_folder      = "LandCoverData",
+         out_folder_mod  = "LandCoverData",
+         selprod         = "LandCover_Type_Yearly_500m (MCD12Q1)",
+         bandsel         = "LC1", 
+         user            = "anoobvinu" ,
+         password        = "Twilight1990#",
+         start_date      = "2022.01.01", 
+         end_date        = "2022.12.31", 
+         verbose         = FALSE,
+         spatmeth        = "file",
+         spafile         = spatial_filepath,
+         out_format      = "GTiff")
+# Downloading the boundary of Zimbabwe
+map_boundary <- geoboundaries("Zimbabwe")
+
+# Reading in the downloaded landcover raster data
+IGBP_raster <- raster(here::here("LandCoverData/zimbabwe/LandCover_Type_Yearly_500m_v6/LC1/MCD12Q1_LC1_2019_001.tif"))
+
+# Transforming data
+IGBP_raster <- projectRaster(IGBP_raster, crs = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+
+# Cropping data
+IGBP_raster <- raster::mask(IGBP_raster, as_Spatial(map_boundary))
+
+# Converting the raster object into a dataframe and converting the IGBP classification into a factor
+IGBP_df <- as.data.frame(IGBP_raster, xy = TRUE, na.rm = TRUE) %>%
+  mutate(MCD12Q1_LC1_2019_001 = as.factor(round(MCD12Q1_LC1_2019_001)))
+rownames(IGBP_df) <- c()
+# Renaming IGBP classification levels
+levels(IGBP_df$MCD12Q1_LC1_2019_001) <- c( "Evergreen needleleaf forests",
+                                           "Evergreen broadleaf forests",
+                                           "Deciduous needleleaf forests",
+                                           "Deciduous broadleaf forests",
+                                           "Mixed forests",
+                                           "Closed shrublands",
+                                           "Open shrublands",
+                                           "Woody savannas",
+                                           "Savannas",
+                                           "Grasslands",
+                                           "Permanent wetlands",
+                                           "Croplands",
+                                           "Urban and built-up lands",
+                                           "Cropland/natural vegetation mosaics",
+                                           "Snow and ice",
+                                           "Barren",
+                                           "Water bodies")
+# Visualising using ggplot2
+ggplot() + 
+  # geom_raster(data = IGBP_df,
+  #             aes(x = x, y = y, fill = MCD12Q1_LC1_2019_001)) +
+  geom_sf(data = map_boundary, inherit.aes = FALSE, fill = NA) +
+  scale_fill_viridis(name = "Land Cover Type", discrete = TRUE) +
+  labs(title = "Land Cover classification in Zimbabwe",
+       subtitle = "01-01-2019 - 31-12-2019",
+       x = "Longitude",
+       y = "Latitude") +
+  theme_minimal()
+```
+
+```{r}
+# Downloading the boundary of Zimbabwe
+map_boundary <- gb_adm1("USA")
+```
+
+
+
+```{r}
+# us_states <- readOGR("us-boundaries/us_bound_pop.shp")
+
+require(sf)
+require(fs)
+testSHP <- read_sf("../maps/APPS/cb_2018_us_state_500k.shp")
+
+testSHP %>% ggplot() +geom_sf()
+
+
+MD_area <- testSHP[testSHP$NAME=="Maryland","STATEFP"]
+WV_area <- testSHP[testSHP$NAME=="West Virginia","STATEFP"]
+VA_area <- testSHP[testSHP$NAME=="Virginia","STATEFP"]
+
+
+
+read_sf('../maps/APPS/cb_2018_us_state_500k.shp') %>%
+  filter(NAME %in% c("Maryland", "West Virginia", "Virginia")) %>%
+  ggplot() +
+  geom_sf(aes(fill = NAME))
+```
+
+
+
+# try 200
+
+```{r}
+# Define ggplot function
+theme_gppr <- function(){ 
+    
+    theme_void() %+replace%    # replace elements we want to change
+    
+    theme(
+      plot.title = element_text(
+                   margin = margin(b = 2),
+                   size = 14,
+                   color = 'black',
+                   face = 'bold',
+                   hjust = 0),
+      
+      plot.subtitle = element_text(
+                   margin = margin(b = 2),
+                   size = 12,
+                   color = 'black',
+                   face = 'italic',
+                   hjust = 0),
+      
+      plot.caption = element_text(hjust = 0, size = 8),
+      
+      legend.position = 'right',
+      legend.title = element_text(size = 9),
+      legend.text = element_text(size = 9),
+      
+      plot.margin = unit(c(0.1, 0.0, 0.2, 0.0), "in")
+    )
+}
+```
+
+
+```{r}
+# Load libraries
+library(dplyr)
+library(ggplot2)
+library(tigris)
+library(sf)
+library(raster)
+library(RStoolbox)
+library(ggsflabel)
+library(rayshader)
+library(elevatr)
+
+# Load waterbodies shapefile
+water <- sf::st_read('shapes/utah_water.shp', quiet = T)
+
+# Load land ownership shapefile
+lands <- sf::st_read('../maps/APPS/cb_2018_us_state_500k.shp', quiet = T)
+
+# Get Utah counties using tigris
+utah_counties <- counties(
+  state = 'Utah', cb = TRUE,
+  resolution = '20m', progress_bar = FALSE)
+
+# Use elevatr to get elevation data
+elev <- elevatr::get_elev_raster(
+  locations = utah_counties$geometry, z = 7, clip = 'locations'
+)
+cols <- c('#FFF062', 'green4', 'lightblue', '#D26799')
+
+
+
+ggplot() +
+  geom_sf(data = lands, aes(fill = NAME), color = "black") +
+  # geom_sf(data = water, color = NA, fill = 'lightblue', size = 0.6, alpha = 1) +
+  # geom_sf(data = utah_counties, color = 'black', fill = NA) +
+  # geom_sf_text_repel(data = utah_counties, aes(label = NAME),
+  #                    size = 2.8, bg.color = 'white', color = 'black') +
+  coord_sf(datum = sf::st_crs(tiff_file)) +
+  # scale_fill_manual(values = alpha(cols, 0.4)) +
+  labs(title = 'Land Adminstrative Ownership',
+       subtitle = 'State of Utah',
+       caption = 'Data source: https://gis.utah.gov/data/cadastre/land-ownership',
+       fill = 'Owership') +
+  theme_gppr()
+
+# Elevation map
+ggRGB(dd, r = 1, g = 2, b = 3, maxpixels = 5e+08) +
+  geom_sf(data = water, color = NA, fill = 'lightblue', size = 0.6, alpha = 1) +
+  geom_sf(data = utah_counties, color = 'white', fill = NA) +
+  geom_sf_text_repel(data = utah_counties, aes(label = NAME),
+                     size = 2.8, bg.color = 'white', color = 'black') +
+  coord_sf(datum = sf::st_crs(utah_counties)) +
+  labs(title = 'Digital Elevation Model',
+       subtitle = 'State of Utah',
+       caption = 'Data source: https://registry.opendata.aws/terrain-tiles',
+       fill = 'Owership') +
+  theme_gppr()
+```
+

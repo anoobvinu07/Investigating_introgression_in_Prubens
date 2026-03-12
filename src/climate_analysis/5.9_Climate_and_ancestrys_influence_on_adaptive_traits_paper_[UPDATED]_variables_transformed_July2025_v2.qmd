@@ -1,0 +1,1643 @@
+---
+title: "Testing the effect of source climate and genetic PCs on adaptive traits"
+author: Anoob Prakash
+lightbox: true
+format: 
+  html:
+    code-overflow: scroll
+    toc: true
+    embed-resources: true
+    code-tools: false
+    code-fold: false
+knitr:
+  opts_knit:
+    root.dir: "Z:/Anoob/Polygenic_Adaptation/ANALYSIS"
+editor_options: 
+  chunk_output_type: console
+---
+
+# Background
+
+The following analysis is carried out to sparse out the effect of climate and admixture ancestry on locally adaptive traits in red spruce. The analysis is carried out for all the traits that was observed to be selected for under the Q~PC~ analysis.  
+
+**Steps**
+
+-   Scatterplot: Visualizes the relationship between variables to check for non-linearity.
+
+-   Model fitting: Compares a linear model with and without transformation.
+
+-   AIC comparison: Quantifies which model fits better.
+
+-   Diagnostic plots: Checks for normality and homoscedasticity of residuals.
+
+-   QQ plot: Specifically checks residual normality.  
+
+```{r}
+#| message: false
+#| warning: false
+
+# Packages loaded 
+require(tidyverse)
+require(kableExtra)
+require(formattable)
+require(lmerTest)
+require(tidyverse)
+require(sjPlot)
+require(FactoMineR)
+require(factoextra)
+require(tidymodels)
+require(modelsummary)
+require(DT)
+require(GGally)
+```
+
+## Data
+
+```{r}
+set.seed(123)
+
+# Meta data
+Meta <- read.table("../../MCMCglmm/Exome/RS_Exome_metadata.txt", sep="\t",header=T)
+
+# Trait and plasticity
+# data <- read.csv("../TraitData/trait_blups_complete.csv", header=T)
+
+data <- read.csv("data/Qpc_data.csv", header=T)
+
+# peek into the data
+data |> 
+  DT::datatable(
+    caption = "Qpc Trait data",
+    filter="top") |> 
+  DT::formatRound(2:5, digits = 2)
+```
+
+### Climate data
+
+```{r}
+# Climate data
+climateNA <- read.csv("../ClimateData/climateData_evolution.csv")
+climateNA <- subset(climateNA,select=-c(X)) # remove overalapping columns
+# climateNA <- climateNA[,-c(1)] # remove the Family column
+# climateNA <- group_by(climateNA, Population) %>% summarise_if(is.numeric,mean)
+
+
+# merge towaRDS THE END
+# data <- merge(climateNA,traitBlups[,1:22],by="Family") # merge data by the column "Population"
+# data$Region <- as.factor(data$Region); data$Region <- factor(data$Region,levels = c("Core", "Margin", "Edge"))
+
+```
+
+**Garden climate**
+
+```{r garden climate and climate PCA}
+Garden_clim <- read.table("../ClimateData/paper1_climate_data/climNA_gardens_2019-20.txt", header=T)
+
+Garden_clim |> 
+  DT::datatable(
+    caption = "Garden climate",
+    filter="top") |> 
+  DT::formatRound(1:4, digits = 1)
+
+
+colnames(Garden_clim)[1] <- "Garden"
+colnames(Garden_clim)[2] <- "Year"
+
+### estimate the mean climate variables for 2019-2020 across three garden sites
+# Subset the data for MD
+md_data <- Garden_clim %>% filter(Garden == "MD")
+# Calculate column means for numeric columns
+md_numeric <- colnames(md_data[-c(1:2)])
+md_means <- apply(md_data[, md_numeric], 2, mean)
+# Add the means as a new row
+md_data_with_means <- rbind(md_data, c(Garden = "MD", Year = "Mean", md_means))
+
+# Subset the data for NC
+nc_data <- Garden_clim %>% filter(Garden == "NC")
+# Calculate column means for numeric columns
+nc_numeric <- colnames(nc_data[-c(1:2)])
+nc_means <- apply(nc_data[, nc_numeric], 2, mean)
+# Add the means as a new row
+nc_data_with_means <- rbind(nc_data, c(Garden = "NC", Year = "Mean", nc_means))
+
+# Subset the data for VT
+vt_data <- Garden_clim %>% filter(Garden == "VT")
+# Calculate column means for numeric columns
+vt_numeric <- colnames(vt_data[-c(1:2)])
+vt_means <- apply(vt_data[, vt_numeric], 2, mean)
+# Add the means as a new row
+vt_data_with_means <- rbind(vt_data, c(Garden = "VT", Year = "Mean", vt_means))
+
+# combined mean data - added to the garden climate data.frame
+Garden_clim <- rbind(Garden_clim,md_data_with_means[3,],nc_data_with_means[3,],vt_data_with_means[3,])
+
+# Reset row names and revert columns to numeric
+rownames(Garden_clim) <- NULL
+Garden_clim[vt_numeric] <- lapply(Garden_clim[vt_numeric], as.numeric)
+```
+
+## Merge trait and climate data
+
+```{r}
+# combine the trait and climate data
+data_clim <- left_join(data,climateNA[,-c(2:8)])
+```
+
+# Functions for Model testing   
+:::panel-tabset
+## Function to run the models  
+
+```{r}
+scale_models <- function(data, 
+                          # variable to run the model
+                          response, 
+                          variable_predictors, # climate variables
+                          constant_predictor,  # ancestry score - q2
+                          # scale the response variable
+                          scale_response = FALSE,
+                          # scale the predictors
+                          scale_predictors = FALSE) {
+                          df <- data
+                          all_predictors <- unique(c(variable_predictors, constant_predictor))
+                          
+                          # Optionally scale response
+                          if (scale_response) {
+                            df[[response]] <- scale(df[[response]])
+                            response_var <- response
+                          } else {
+                            response_var <- response
+                          }
+                          
+                          # Optionally scale predictors
+                          if (scale_predictors) {
+                            for (pred in all_predictors) {
+                              df[[pred]] <- scale(df[[pred]])
+                            }
+                            var_preds <- variable_predictors
+                            const_pred <- constant_predictor
+                          } else {
+                            var_preds <- variable_predictors
+                            const_pred <- constant_predictor
+                          }
+                          
+                          models_list <- list()
+                          for (vp in var_preds) {
+                            # Build formula string with interaction
+                            formula_str <- paste0(response_var, " ~ ", 
+                                                  vp, " + ", const_pred, " + ", vp, ":", const_pred)
+                            model_formula <- as.formula(formula_str)
+                            models_list[[vp]] <- lm(model_formula, data = df)
+                          }
+                          return(models_list)
+                        }
+```
+
+## Function to summarize models
+```{r}
+summarize_models <- function(model_list, 
+                                    coef_names = NULL,
+                                    gof_stats = c("r.squared", "adj.r.squared"),
+                                    star_levels = c(' ' = 0.05, '**' = 0.0045, '***' = 0.001),
+                                    output_format = "default") {
+  
+                    # Ensure Intercept is included
+                    if (!is.null(coef_names) && !"(Intercept)" %in% names(coef_names)) {
+                      coef_names <- c("(Intercept)" = "Intercept", coef_names)
+                    }
+                    
+                    modelsummary::modelsummary(
+                      model_list,
+                      estimate = "{estimate} ({std.error})",
+                      statistic = "{p.value}{stars}",
+                      coef_map = coef_names,
+                      gof_map = gof_stats,
+                      stars = star_levels,
+                      output = output_format
+                    )}
+
+# name the coef for the models
+## for Genetic PC1
+coef_map_PC1 <- c(
+  "CMD" = "Climate Variable",
+  "DD18" = "Climate Variable",
+  "EXT" = "Climate Variable",
+  "MAR" = "Climate Variable",
+  "MSP" = "Climate Variable",
+  "PAS" = "Climate Variable",
+  "PET" = "Climate Variable",
+  "RH" = "Climate Variable",
+  "DD_0" = "Climate Variable",
+  "TD" = "Climate Variable",
+  "eFFP" = "Climate Variable",
+  "PC1" = "Genetic PC",
+  "CMD:PC1" = "Climate:Genetic PC",
+  "DD18:PC1" = "Climate:Genetic PC",
+  "EXT:PC1" = "Climate:Genetic PC",
+  "MAR:PC1" = "Climate:Genetic PC",
+  "MSP:PC1" = "Climate:Genetic PC",
+  "PAS:PC1" = "Climate:Genetic PC",
+  "PET:PC1" = "Climate:Genetic PC",
+  "RH:PC1" = "Climate:Genetic PC",
+  "DD_0:PC1" = "Climate:Genetic PC",
+  "TD:PC1" = "Climate:Genetic PC",
+  "eFFP:PC1" = "Climate:Genetic PC"
+)
+## for Genetic PC2
+coef_map_PC2 <- c(
+  "CMD" = "Climate Variable",
+  "DD18" = "Climate Variable",
+  "EXT" = "Climate Variable",
+  "MAR" = "Climate Variable",
+  "MSP" = "Climate Variable",
+  "PAS" = "Climate Variable",
+  "PET" = "Climate Variable",
+  "RH" = "Climate Variable",
+  "DD_0" = "Climate Variable",
+  "TD" = "Climate Variable",
+  "eFFP" = "Climate Variable",
+  "PC2" = "Genetic PC",
+  "CMD:PC2" = "Climate:Genetic PC",
+  "DD18:PC2" = "Climate:Genetic PC",
+  "EXT:PC2" = "Climate:Genetic PC",
+  "MAR:PC2" = "Climate:Genetic PC",
+  "MSP:PC2" = "Climate:Genetic PC",
+  "PAS:PC2" = "Climate:Genetic PC",
+  "PET:PC2" = "Climate:Genetic PC",
+  "RH:PC2" = "Climate:Genetic PC",
+  "DD_0:PC2" = "Climate:Genetic PC",
+  "TD:PC2" = "Climate:Genetic PC",
+  "eFFP:PC2" = "Climate:Genetic PC"
+)
+```
+
+## Function for 3D plot  
+
+```{r}
+plot_in3d <- function(data, x, y, z, shape=NA, pch, grid.lines = 20, theta = 40, phi = 20,
+                      xlab = "x-axis", ylab = "y-axis", zlab = "z-axis", color_var,
+                      shape_legend_position=NA, show_legends=TRUE) {
+  require(plot3D)
+  require(paletteer)
+  
+  # Extract variables from the data frame
+  var1 <- data[[x]] # Climate variable
+  var2 <- data[[y]] # Ancestry
+  var3 <- data[[z]] # trait 
+  colvar <- data[[color_var]] # color 
+  
+  # Compute the linear regression
+  fit <- lm(var3 ~ var1 + var2 + var1:var2)
+  
+  # Predict values on regular xy grid
+  x.pred <- seq(min(var1, na.rm = TRUE), max(var1, na.rm = TRUE), length.out = grid.lines)
+  y.pred <- seq(min(var2, na.rm = TRUE), max(var2, na.rm = TRUE), length.out = grid.lines)
+  xy <- expand.grid(x = x.pred, y = y.pred)
+  z.pred <- matrix(predict(fit, newdata = data.frame(var1 = xy$x, var2 = xy$y)), 
+                   nrow = grid.lines, ncol = grid.lines)
+  
+  # Fitted points for droplines to surface
+  fitpoints <- predict(fit)
+  
+  # plot shapes
+  if(!is.na(shape)) {
+    shape_vector <- as.numeric(factor(data[[shape]]))
+    pch_values <- pch  # You can adjust these values for different shapes
+    point_shapes <- pch_values[shape_vector]
+  } else {
+    point_shapes <- 16
+  }
+  
+  # Scatter plot with regression plane
+  scatter3D(var1, var2, var3, cex = 2, 
+            theta = theta, # rotate the plot left/right direction
+            phi = phi,     # rotate the plot top/bottom direction
+            ticktype = "detailed",
+            bty="b2", box=TRUE,
+            colvar = colvar,
+            col = paletteer_c("ggthemes::Sunset-Sunrise Diverging", 30, direction = 1),
+            xlab = xlab, ylab = ylab, zlab = zlab, 
+            pch = point_shapes,
+            surf = list(x = x.pred, y = y.pred, z = z.pred,  
+                        facets = NA, fit = fitpoints, col=c("grey70","black")),
+            colkey = if(show_legends) list() else FALSE)
+  
+  # Update axis title font sizes
+  # par(cex.lab=axis_title_font_size) 
+  
+  # Add shape legend if shape is specified and legends are to be shown
+  if (!is.na(shape) && show_legends) {
+    legend(shape_legend_position,
+           legend = levels(factor(data[[shape]])),
+           pch = pch[1:length(unique(data[[shape]]))],
+           title = shape,
+           cex = 0.8)
+  }
+}
+```
+:::
+
+```{r}
+# Climate model variables
+climate_vars <- c('DD_0','DD18','MAR','PAS','MSP','RH','EXT','CMD','TD','eFFP','PET')
+```
+
+```{r}
+#| warning: true
+#| message: true
+
+scatter_data <- data_clim
+scatter_data[,climate_vars] <- lapply(scatter_data[climate_vars], scale)
+scatter_data <- scatter_data %>% pivot_longer(cols = climate_vars, names_to = "ClimateVariables", values_to = "ClimateValue")
+```
+
+# Correlations between Climate, Ancestry and Kinship PCs
+```{r}
+#| fig-height: 15
+#| fig-width: 15
+
+set.seed(123)
+pairs(data_clim[,c('DD_0','DD18','MAR','PAS','MSP','RH','EXT','CMD','TD','eFFP','PET','PC1','PC2','q2')])
+
+# correlation df
+corr_data <- data_clim[,c('DD_0','DD18','MAR','PAS','MSP','RH','EXT','CMD','TD','eFFP','PET','PC1','PC2','q2')]
+
+names(corr_data)[14] <- "BS Ancestry"
+
+corr_pair <- ggpairs(scale(corr_data))
+
+corr_pair + theme_bw()
+
+# ggsave("./figures/paper_figures/FigureS5_corr_plot.png", width = 3500, height = 3000,dpi=300,
+#        limitsize = F,
+#        units = "px", type = "cairo")
+# 
+# ggsave("./figures/paper_figures/FigureS5_corr_plot.pdf", width = 30, height = 25,dpi=300,
+#        units = "cm")
+```
+
+
+# Height Growth
+:::panel-tabset
+## Scatter plot
+
+```{r}
+# Scatter plot to check non linearity
+ggplot(scatter_data, aes(x = ClimateValue, y = scale(Growth))) +
+  geom_point() + facet_wrap(.~ClimateVariables, scales = "free_x") + theme_bw()
+```
+
+## Model summaries
+```{r}
+#| code-fold: true
+
+# Variable Scaling
+### Unscaled data
+growth_models_unscaled <- scale_models(data = data_clim,
+                                            response = "Growth",
+                                            variable_predictors = climate_vars,
+                                            constant_predictor = "PC2",
+                                            scale_response = F,
+                                            scale_predictors = F)
+
+
+### Scaled data  
+## Only the predictors are scaled
+growth_models_pred_scaled <- scale_models(data = data_clim,
+                                            response = "Growth",
+                                            variable_predictors = climate_vars,
+                                            constant_predictor = "PC2",
+                                            scale_response = F,
+                                            scale_predictors = T)
+
+## Both the response and predictors are scaled
+growth_models_all_scaled <- scale_models(data = data_clim,
+                                            response = "Growth",
+                                            variable_predictors = climate_vars,
+                                            constant_predictor = "PC2",
+                                            scale_response = T,
+                                            scale_predictors = T)
+```
+
+::::panel-tabset
+
+### Unscaled data  
+```{r}
+#| code-fold: true
+summarize_models(growth_models_unscaled,
+                 coef_names = coef_map_PC2,
+                 output_format = "gt")
+
+```
+
+### Predictors scaled  
+```{r}
+#| code-fold: true
+summarize_models(growth_models_pred_scaled,
+                 coef_names = coef_map_PC2,
+                 output_format = "gt")
+```
+
+### All variables scaled  
+```{r}
+#| code-fold: true
+summarize_models(growth_models_all_scaled,
+                 coef_names = coef_map_PC2,
+                 output_format = "gt")
+
+growth_models_tinytables <- summarize_models(growth_models_all_scaled,
+                                             coef_names = coef_map_PC2,
+                                             output_format = "tinytable")
+# tinytable::save_tt(growth_models_tinytables, "./tables/growth_model.docx")
+```
+::::
+
+
+## Compare models using AIC
+```{r}
+#| code-fold: true
+# Compare models using AIC
+model_names <- names(growth_models_unscaled)
+
+growth_aic_unscaled <- sapply(growth_models_unscaled, AIC)
+growth_aic_pred_scaled   <- sapply(growth_models_pred_scaled, AIC)
+growth_aic_all_scaled   <- sapply(growth_models_all_scaled, AIC)
+
+growth_model_comparison <- data.frame(
+                              # Model = model_names,
+                              AIC_Unscaled = growth_aic_unscaled,
+                              AIC_Pred_Scaled = growth_aic_pred_scaled,
+                              AIC_All_Scaled = growth_aic_all_scaled
+                            )
+
+# Order by the best (lowest) AIC from the unscaled models
+growth_model_comparison <- growth_model_comparison[order(growth_model_comparison$AIC_Unscaled), ]
+
+growth_model_comparison |> 
+  DT::datatable(
+    caption = "Growth Model AIC",
+    filter="top",
+    options = list(pageLength = 11)) |> 
+  DT::formatRound(1:3, digits = 2)
+```
+
+**Delta AIC**  
+```{r}
+# Calculate AIC for each model
+aic_values <- sapply(growth_models_all_scaled, AIC)
+
+# Calculate delta AIC
+delta_aic <- aic_values - min(aic_values)
+
+# AIC dataframe
+aic_df <- data.frame(
+  AIC = aic_values,
+  delta_AIC = delta_aic
+)
+t(aic_df)
+
+
+# write.csv(t(aic_df), "./tables/growth_AIC.csv")
+```
+
+## Diagnostic plots
+
+::::panel-tabset
+
+### Unscaled data 
+```{r}
+par(mfrow = c(2, 2))
+plot(growth_models_unscaled[["PAS"]])
+
+plot(growth_models_unscaled[["PET"]])
+```
+
+### Predictors scaled 
+```{r}
+par(mfrow = c(2, 2))
+plot(growth_models_pred_scaled[["PAS"]])
+
+plot(growth_models_pred_scaled[["PET"]])
+```
+
+### All variables scaled 
+```{r}
+par(mfrow = c(2, 2))
+plot(growth_models_all_scaled[["PAS"]])
+
+plot(growth_models_all_scaled[["PET"]])
+```
+::::
+:::
+
+--- 
+
+# Total Dry Biomass
+:::panel-tabset
+## Scatter plot
+
+```{r}
+# Scatter plot to check non linearity
+ggplot(scatter_data, aes(x = ClimateValue, y = scale(TotalDry))) +
+  geom_point() + facet_wrap(.~ClimateVariables, scales = "free_x") + theme_bw()
+```
+
+## Model summaries
+```{r}
+#| code-fold: true
+
+# Variable Scaling
+### Unscaled data
+tdm_models_unscaled <- scale_models(data = data_clim,
+                                            response = "TotalDry",
+                                            variable_predictors = climate_vars,
+                                            constant_predictor = "PC2",
+                                            scale_response = F,
+                                            scale_predictors = F)
+
+
+### Scaled data  
+## Only the predictors are scaled
+tdm_models_pred_scaled <- scale_models(data = data_clim,
+                                            response = "TotalDry",
+                                            variable_predictors = climate_vars,
+                                            constant_predictor = "PC2",
+                                            scale_response = F,
+                                            scale_predictors = T)
+
+## Both the response and predictors are scaled
+tdm_models_all_scaled <- scale_models(data = data_clim,
+                                            response = "TotalDry",
+                                            variable_predictors = climate_vars,
+                                            constant_predictor = "PC2",
+                                            scale_response = T,
+                                            scale_predictors = T)
+```
+
+::::panel-tabset
+
+### Unscaled data  
+```{r}
+#| code-fold: true
+summarize_models(tdm_models_unscaled,
+                 coef_names = coef_map_PC2,
+                 output_format = "gt")
+
+```
+
+### Predictors scaled  
+```{r}
+#| code-fold: true
+summarize_models(tdm_models_pred_scaled,
+                 coef_names = coef_map_PC2,
+                 output_format = "gt")
+```
+
+### All variables scaled  
+```{r}
+#| code-fold: true
+summarize_models(tdm_models_all_scaled,
+                 coef_names = coef_map_PC2,
+                 output_format = "gt")
+
+total_dry_models_tinytables <- summarize_models(tdm_models_all_scaled,
+                                             coef_names = coef_map_PC2,
+                                             output_format = "tinytable")
+
+# tinytable::save_tt(total_dry_models_tinytables, "./tables/total_dry_biomass_model.docx")
+```
+::::
+
+
+## Compare models using AIC
+```{r}
+#| code-fold: true
+# Compare models using AIC
+model_names <- names(tdm_models_unscaled)
+
+tdm_aic_unscaled <- sapply(tdm_models_unscaled, AIC)
+tdm_aic_pred_scaled   <- sapply(tdm_models_pred_scaled, AIC)
+tdm_aic_all_scaled   <- sapply(tdm_models_all_scaled, AIC)
+
+tdm_model_comparison <- data.frame(
+                              # Model = model_names,
+                              AIC_Unscaled = tdm_aic_unscaled,
+                              AIC_Pred_Scaled = tdm_aic_pred_scaled,
+                              AIC_All_Scaled = tdm_aic_all_scaled
+                            )
+
+# Order by the best (lowest) AIC from the unscaled models
+tdm_model_comparison <- tdm_model_comparison[order(tdm_model_comparison$AIC_Unscaled), ]
+
+tdm_model_comparison |> 
+  DT::datatable(
+    caption = "Total Dry Biomass Model AIC",
+    filter="top",
+    options = list(pageLength = 11)) |> 
+  DT::formatRound(1:3, digits = 2)
+
+```
+
+**Delta AIC**  
+```{r}
+# Calculate AIC for each model
+aic_values <- sapply(tdm_models_all_scaled, AIC)
+
+# Calculate delta AIC
+delta_aic <- aic_values - min(aic_values)
+
+# AIC dataframe
+aic_df <- data.frame(
+  AIC = aic_values,
+  delta_AIC = delta_aic
+)
+t(aic_df)
+
+
+# write.csv(t(aic_df), "./tables/total_dry_biomass_AIC.csv")
+```
+
+## Diagnostic plots
+
+::::panel-tabset
+
+### Unscaled data 
+```{r}
+par(mfrow = c(2, 2))
+plot(tdm_models_unscaled[["DD18"]])
+
+plot(tdm_models_unscaled[["eFFP"]])
+```
+
+### Predictors scaled 
+```{r}
+par(mfrow = c(2, 2))
+plot(tdm_models_pred_scaled[["DD18"]])
+
+plot(tdm_models_pred_scaled[["eFFP"]])
+```
+
+### All variables scaled 
+```{r}
+par(mfrow = c(2, 2))
+plot(tdm_models_all_scaled[["DD18"]])
+
+plot(tdm_models_all_scaled[["eFFP"]])
+```
+::::
+:::
+
+--- 
+
+# Height Growth plasticity
+:::panel-tabset
+## Scatter plot
+
+```{r}
+# Scatter plot to check non linearity
+ggplot(scatter_data, aes(x = ClimateValue, y = scale(Growth_plasticity))) +
+  geom_point() + facet_wrap(.~ClimateVariables, scales = "free_x") + theme_bw()
+```
+
+## Model summaries
+```{r}
+#| code-fold: true
+
+# Variable Scaling
+### Unscaled data
+growth_plasticity_models_unscaled <- scale_models(data = data_clim,
+                                            response = "Growth_plasticity",
+                                            variable_predictors = climate_vars,
+                                            constant_predictor = "PC2",
+                                            scale_response = F,
+                                            scale_predictors = F)
+
+
+### Scaled data  
+## Only the predictors are scaled
+growth_plasticity_models_pred_scaled <- scale_models(data = data_clim,
+                                            response = "Growth_plasticity",
+                                            variable_predictors = climate_vars,
+                                            constant_predictor = "PC2",
+                                            scale_response = F,
+                                            scale_predictors = T)
+
+## Both the response and predictors are scaled
+growth_plasticity_models_all_scaled <- scale_models(data = data_clim,
+                                            response = "Growth_plasticity",
+                                            variable_predictors = climate_vars,
+                                            constant_predictor = "PC2",
+                                            scale_response = T,
+                                            scale_predictors = T)
+```
+
+::::panel-tabset
+
+### Unscaled data  
+```{r}
+#| code-fold: true
+summarize_models(growth_plasticity_models_unscaled,
+                 coef_names = coef_map_PC2,
+                 output_format = "gt")
+
+```
+
+### Predictors scaled  
+```{r}
+#| code-fold: true
+summarize_models(growth_plasticity_models_pred_scaled,
+                 coef_names = coef_map_PC2,
+                 output_format = "gt")
+```
+
+### All variables scaled  
+```{r}
+#| code-fold: true
+summarize_models(growth_plasticity_models_all_scaled,
+                 coef_names = coef_map_PC2,
+                 output_format = "gt")
+
+growth_plasticity_models_tinytables <- summarize_models(growth_plasticity_models_all_scaled,
+                                             coef_names = coef_map_PC2,
+                                             output_format = "tinytable")
+# tinytable::save_tt(growth_plasticity_models_tinytables, "./tables/growth_plasticity_model.docx")
+```
+::::
+
+
+## Compare models using AIC
+```{r}
+#| code-fold: true
+# Compare models using AIC
+model_names <- names(growth_plasticity_models_unscaled)
+
+growth_plasticity_aic_unscaled <- sapply(growth_plasticity_models_unscaled, AIC)
+growth_plasticity_aic_pred_scaled   <- sapply(growth_plasticity_models_pred_scaled, AIC)
+growth_plasticity_aic_all_scaled   <- sapply(growth_plasticity_models_all_scaled, AIC)
+
+growth_plasticity_model_comparison <- data.frame(
+                              # Model = model_names,
+                              AIC_Unscaled = growth_plasticity_aic_unscaled,
+                              AIC_Pred_Scaled = growth_plasticity_aic_pred_scaled,
+                              AIC_All_Scaled = growth_plasticity_aic_all_scaled
+                            )
+
+# Order by the best (lowest) AIC from the unscaled models
+growth_plasticity_model_comparison <- growth_plasticity_model_comparison[order(growth_plasticity_model_comparison$AIC_Unscaled), ]
+
+growth_plasticity_model_comparison |> 
+  DT::datatable(
+    caption = "Growth plasticity Model AIC",
+    filter="top",
+    options = list(pageLength = 11)) |> 
+  DT::formatRound(1:3, digits = 2)
+
+```
+
+**Delta AIC**  
+```{r}
+# Calculate AIC for each model
+aic_values <- sapply(growth_plasticity_models_all_scaled, AIC)
+
+# Calculate delta AIC
+delta_aic <- aic_values - min(aic_values)
+
+# AIC dataframe
+aic_df <- data.frame(
+  AIC = aic_values,
+  delta_AIC = delta_aic
+)
+t(aic_df)
+
+
+# write.csv(t(aic_df), "./tables/growth_plasticity_AIC.csv")
+```
+
+## Diagnostic plots
+
+::::panel-tabset
+
+### Unscaled data 
+```{r}
+par(mfrow = c(2, 2))
+plot(growth_plasticity_models_unscaled[["PET"]])
+
+plot(growth_plasticity_models_unscaled[["PAS"]])
+```
+
+### Predictors scaled 
+```{r}
+par(mfrow = c(2, 2))
+plot(growth_plasticity_models_pred_scaled[["PET"]])
+
+plot(growth_plasticity_models_pred_scaled[["PAS"]])
+```
+
+### All variables scaled 
+```{r}
+par(mfrow = c(2, 2))
+plot(growth_plasticity_models_all_scaled[["PET"]])
+
+plot(growth_plasticity_models_all_scaled[["PAS"]])
+```
+::::
+:::
+
+--- 
+
+# Total Dry Biomass plasticity
+:::panel-tabset
+## Scatter plot
+
+```{r}
+# Scatter plot to check non linearity
+ggplot(scatter_data, aes(x = ClimateValue, y = scale(TotalDry_plasticity))) +
+  geom_point() + facet_wrap(.~ClimateVariables, scales = "free_x") + theme_bw()
+```
+
+## Model summaries
+```{r}
+#| code-fold: true
+
+# Variable Scaling
+### Unscaled data
+tdm_plasticity_models_unscaled <- scale_models(data = data_clim,
+                                            response = "TotalDry_plasticity",
+                                            variable_predictors = climate_vars,
+                                            constant_predictor = "PC2",
+                                            scale_response = F,
+                                            scale_predictors = F)
+
+
+### Scaled data  
+## Only the predictors are scaled
+tdm_plasticity_models_pred_scaled <- scale_models(data = data_clim,
+                                            response = "TotalDry_plasticity",
+                                            variable_predictors = climate_vars,
+                                            constant_predictor = "PC2",
+                                            scale_response = F,
+                                            scale_predictors = T)
+
+## Both the response and predictors are scaled
+tdm_plasticity_models_all_scaled <- scale_models(data = data_clim,
+                                            response = "TotalDry_plasticity",
+                                            variable_predictors = climate_vars,
+                                            constant_predictor = "PC2",
+                                            scale_response = T,
+                                            scale_predictors = T)
+```
+
+::::panel-tabset
+
+### Unscaled data  
+```{r}
+#| code-fold: true
+summarize_models(tdm_plasticity_models_unscaled,
+                 coef_names = coef_map_PC2,
+                 output_format = "gt")
+
+```
+
+### Predictors scaled  
+```{r}
+#| code-fold: true
+summarize_models(tdm_plasticity_models_pred_scaled,
+                 coef_names = coef_map_PC2,
+                 output_format = "gt")
+```
+
+### All variables scaled  
+```{r}
+#| code-fold: true
+summarize_models(tdm_plasticity_models_all_scaled,
+                 coef_names = coef_map_PC2,
+                 output_format = "gt")
+
+tdm_plasticity_models_tinytables <- summarize_models(tdm_plasticity_models_all_scaled,
+                                             coef_names = coef_map_PC2,
+                                             output_format = "tinytable")
+
+# tinytable::save_tt(tdm_plasticity_models_tinytables, "./tables/total_dry_biomass_plasticity_model.docx")
+```
+::::
+
+
+## Compare models using AIC
+```{r}
+#| code-fold: true
+# Compare models using AIC
+model_names <- names(tdm_plasticity_models_unscaled)
+
+tdm_plasticity_aic_unscaled <- sapply(tdm_plasticity_models_unscaled, AIC)
+tdm_plasticity_aic_pred_scaled   <- sapply(tdm_plasticity_models_pred_scaled, AIC)
+tdm_plasticity_aic_all_scaled   <- sapply(tdm_plasticity_models_all_scaled, AIC)
+
+tdm_plasticity_model_comparison <- data.frame(
+                              # Model = model_names,
+                              AIC_Unscaled = tdm_plasticity_aic_unscaled,
+                              AIC_Pred_Scaled = tdm_plasticity_aic_pred_scaled,
+                              AIC_All_Scaled = tdm_plasticity_aic_all_scaled
+                            )
+
+# Order by the best (lowest) AIC from the unscaled models
+tdm_plasticity_model_comparison <- tdm_plasticity_model_comparison[order(tdm_plasticity_model_comparison$AIC_Unscaled), ]
+
+tdm_plasticity_model_comparison |> 
+  DT::datatable(
+    caption = "Total Dry Biomass plasticity Model AIC",
+    filter="top",
+    options = list(pageLength = 11)) |> 
+  DT::formatRound(1:3, digits = 2)
+
+```
+
+**Delta AIC**  
+```{r}
+# Calculate AIC for each model
+aic_values <- sapply(tdm_plasticity_models_all_scaled, AIC)
+
+# Calculate delta AIC
+delta_aic <- aic_values - min(aic_values)
+
+# AIC dataframe
+aic_df <- data.frame(
+  AIC = aic_values,
+  delta_AIC = delta_aic
+)
+t(aic_df)
+
+
+# write.csv(t(aic_df), "./tables/total_dry_biomass_plasticity_model_AIC.csv")
+```
+
+## Diagnostic plots
+
+::::panel-tabset
+
+### Unscaled data 
+```{r}
+par(mfrow = c(2, 2))
+plot(tdm_plasticity_models_unscaled[["DD18"]])
+
+plot(tdm_plasticity_models_unscaled[["eFFP"]])
+```
+
+### Predictors scaled 
+```{r}
+par(mfrow = c(2, 2))
+plot(tdm_plasticity_models_pred_scaled[["DD18"]])
+
+plot(tdm_plasticity_models_pred_scaled[["eFFP"]])
+```
+
+### All variables scaled 
+```{r}
+par(mfrow = c(2, 2))
+plot(tdm_plasticity_models_all_scaled[["DD18"]])
+
+plot(tdm_plasticity_models_all_scaled[["eFFP"]])
+```
+::::
+:::
+
+--- 
+
+# Bud set (2019)  
+:::panel-tabset
+## Scatter plot
+
+```{r}
+# Scatter plot to check non linearity
+ggplot(scatter_data, aes(x = ClimateValue, y = scale(BudSet_2019))) +
+  geom_point() + facet_wrap(.~ClimateVariables, scales = "free_x") + theme_bw()
+```
+
+## Model summaries
+```{r}
+#| code-fold: true
+
+# Variable Scaling
+### Unscaled data
+budset_19_models_unscaled <- scale_models(data = data_clim,
+                                            response = "BudSet_2019",
+                                            variable_predictors = climate_vars,
+                                            constant_predictor = "PC1",
+                                            scale_response = F,
+                                            scale_predictors = F)
+
+
+### Scaled data  
+## Only the predictors are scaled
+budset_19_models_pred_scaled <- scale_models(data = data_clim,
+                                            response = "BudSet_2019",
+                                            variable_predictors = climate_vars,
+                                            constant_predictor = "PC1",
+                                            scale_response = F,
+                                            scale_predictors = T)
+
+## Both the response and predictors are scaled
+budset_19_models_all_scaled <- scale_models(data = data_clim,
+                                            response = "BudSet_2019",
+                                            variable_predictors = climate_vars,
+                                            constant_predictor = "PC1",
+                                            scale_response = T,
+                                            scale_predictors = T)
+```
+
+::::panel-tabset
+
+### Unscaled data  
+```{r}
+#| code-fold: true
+summarize_models(budset_19_models_unscaled,
+                 coef_names = coef_map_PC1,
+                 output_format = "gt")
+
+```
+
+### Predictors scaled  
+```{r}
+#| code-fold: true
+summarize_models(budset_19_models_pred_scaled,
+                 coef_names = coef_map_PC1,
+                 output_format = "gt")
+```
+
+### All variables scaled  
+```{r}
+#| code-fold: true
+summarize_models(budset_19_models_all_scaled,
+                 coef_names = coef_map_PC1,
+                 output_format = "gt")
+
+budset_19_models_tinytables <- summarize_models(budset_19_models_all_scaled,
+                                             coef_names = coef_map_PC1,
+                                             output_format = "tinytable")
+
+# tinytable::save_tt(budset_19_models_tinytables, "./tables/budset_19_model.docx")
+```
+::::
+
+
+## Compare models using AIC
+```{r}
+#| code-fold: true
+# Compare models using AIC
+model_names <- names(budset_19_models_unscaled)
+
+budset_19_aic_unscaled <- sapply(budset_19_models_unscaled, AIC)
+budset_19_aic_pred_scaled   <- sapply(budset_19_models_pred_scaled, AIC)
+budset_19_aic_all_scaled   <- sapply(budset_19_models_all_scaled, AIC)
+
+budset_19_model_comparison <- data.frame(
+                              # Model = model_names,
+                              AIC_Unscaled = budset_19_aic_unscaled,
+                              AIC_Pred_Scaled = budset_19_aic_pred_scaled,
+                              AIC_All_Scaled = budset_19_aic_all_scaled
+                            )
+
+# Order by the best (lowest) AIC from the unscaled models
+budset_19_model_comparison <- budset_19_model_comparison[order(budset_19_model_comparison$AIC_Unscaled), ]
+
+budset_19_model_comparison |> 
+  DT::datatable(
+    caption = "Bud set (2019) Model AIC",
+    filter="top",
+    options = list(pageLength = 11)) |> 
+  DT::formatRound(1:3, digits = 2)
+
+```
+
+**Delta AIC**  
+```{r}
+# Calculate AIC for each model
+aic_values <- sapply(budset_19_models_all_scaled, AIC)
+
+# Calculate delta AIC
+delta_aic <- aic_values - min(aic_values)
+
+# AIC dataframe
+aic_df <- data.frame(
+  AIC = aic_values,
+  delta_AIC = delta_aic
+)
+t(aic_df)
+
+
+# write.csv(t(aic_df), "./tables/budset_19_AIC.csv")
+```
+
+## Diagnostic plots
+
+::::panel-tabset
+
+### Unscaled data 
+```{r}
+par(mfrow = c(2, 2))
+plot(budset_19_models_unscaled[["DD_0"]])
+
+plot(budset_19_models_unscaled[["PAS"]])
+```
+
+### Predictors scaled 
+```{r}
+par(mfrow = c(2, 2))
+plot(budset_19_models_pred_scaled[["DD_0"]])
+
+plot(budset_19_models_pred_scaled[["PAS"]])
+```
+
+### All variables scaled 
+```{r}
+par(mfrow = c(2, 2))
+plot(budset_19_models_all_scaled[["DD_0"]])
+
+plot(budset_19_models_all_scaled[["PAS"]])
+```
+::::
+:::
+
+--- 
+
+# Bud break (2020)  
+:::panel-tabset
+## Scatter plot
+
+```{r}
+# Scatter plot to check non linearity
+ggplot(scatter_data, aes(x = ClimateValue, y = scale(Budbreak_2020))) +
+  geom_point() + facet_wrap(.~ClimateVariables, scales = "free_x") + theme_bw()
+```
+
+## Model summaries
+```{r}
+#| code-fold: true
+
+# Variable Scaling
+### Unscaled data
+budbreak_20_models_unscaled <- scale_models(data = data_clim,
+                                            response = "Budbreak_2020",
+                                            variable_predictors = climate_vars,
+                                            constant_predictor = "PC1",
+                                            scale_response = F,
+                                            scale_predictors = F)
+
+
+### Scaled data  
+## Only the predictors are scaled
+budbreak_20_models_pred_scaled <- scale_models(data = data_clim,
+                                            response = "Budbreak_2020",
+                                            variable_predictors = climate_vars,
+                                            constant_predictor = "PC1",
+                                            scale_response = F,
+                                            scale_predictors = T)
+
+## Both the response and predictors are scaled
+budbreak_20_models_all_scaled <- scale_models(data = data_clim,
+                                            response = "Budbreak_2020",
+                                            variable_predictors = climate_vars,
+                                            constant_predictor = "PC1",
+                                            scale_response = T,
+                                            scale_predictors = T)
+```
+
+::::panel-tabset
+
+### Unscaled data  
+```{r}
+#| code-fold: true
+summarize_models(budbreak_20_models_unscaled,
+                 coef_names = coef_map_PC1,
+                 output_format = "gt")
+
+```
+
+### Predictors scaled  
+```{r}
+#| code-fold: true
+summarize_models(budbreak_20_models_pred_scaled,
+                 coef_names = coef_map_PC1,
+                 output_format = "gt")
+```
+
+### All variables scaled  
+```{r}
+#| code-fold: true
+summarize_models(budbreak_20_models_all_scaled,
+                 coef_names = coef_map_PC1,
+                 output_format = "gt")
+
+budbreak_20_models_tinytables <- summarize_models(budbreak_20_models_all_scaled,
+                                             coef_names = coef_map_PC1,
+                                             output_format = "tinytable")
+
+# tinytable::save_tt(budbreak_20_models_tinytables, "./tables/budbreak_20_model.docx")
+```
+::::
+
+
+## Compare models using AIC
+```{r}
+#| code-fold: true
+# Compare models using AIC
+model_names <- names(budbreak_20_models_unscaled)
+
+budbreak_20_aic_unscaled <- sapply(budbreak_20_models_unscaled, AIC)
+budbreak_20_aic_pred_scaled   <- sapply(budbreak_20_models_pred_scaled, AIC)
+budbreak_20_aic_all_scaled   <- sapply(budbreak_20_models_all_scaled, AIC)
+
+budbreak_20_model_comparison <- data.frame(
+                              # Model = model_names,
+                              AIC_Unscaled = budbreak_20_aic_unscaled,
+                              AIC_Pred_Scaled = budbreak_20_aic_pred_scaled,
+                              AIC_All_Scaled = budbreak_20_aic_all_scaled
+                            )
+
+# Order by the best (lowest) AIC from the unscaled models
+budbreak_20_model_comparison <- budbreak_20_model_comparison[order(budbreak_20_model_comparison$AIC_Unscaled), ]
+
+budbreak_20_model_comparison |> 
+  DT::datatable(
+    caption = "Bud break (2020) Model AIC",
+    filter="top",
+    options = list(pageLength = 11)) |> 
+  DT::formatRound(1:3, digits = 2)
+
+```
+
+**Delta AIC**  
+```{r}
+# Calculate AIC for each model
+aic_values <- sapply(budbreak_20_models_all_scaled, AIC)
+
+# Calculate delta AIC
+delta_aic <- aic_values - min(aic_values)
+
+# AIC dataframe
+aic_df <- data.frame(
+  AIC = aic_values,
+  delta_AIC = delta_aic
+)
+t(aic_df)
+
+
+# write.csv(t(aic_df), "./tables/budbreak_20_AIC.csv")
+```
+
+## Diagnostic plots
+
+::::panel-tabset
+
+### Unscaled data 
+```{r}
+par(mfrow = c(2, 2))
+plot(budbreak_20_models_unscaled[["DD18"]])
+
+plot(budbreak_20_models_unscaled[["CMD"]])
+
+plot(budbreak_20_models_unscaled[["eFFP"]])
+```
+
+### Predictors scaled 
+```{r}
+par(mfrow = c(2, 2))
+plot(budbreak_20_models_pred_scaled[["DD18"]])
+
+plot(budbreak_20_models_pred_scaled[["CMD"]])
+
+plot(budbreak_20_models_pred_scaled[["eFFP"]])
+```
+
+### All variables scaled 
+```{r}
+par(mfrow = c(2, 2))
+plot(budbreak_20_models_all_scaled[["DD18"]])
+
+plot(budbreak_20_models_all_scaled[["CMD"]])
+
+plot(budbreak_20_models_all_scaled[["eFFP"]])
+```
+::::
+:::
+
+--- 
+
+# Bud break plasticity (2020)  
+:::panel-tabset
+## Scatter plot
+
+```{r}
+# Scatter plot to check non linearity
+ggplot(scatter_data, aes(x = ClimateValue, y = scale(BudBreak_cGDD_plasticity))) +
+  geom_point() + facet_wrap(.~ClimateVariables, scales = "free_x") + theme_bw()
+```
+
+## Model summaries
+```{r}
+#| code-fold: true
+
+# Variable Scaling
+### Unscaled data
+budbreak_20_plasticity_models_unscaled <- scale_models(data = data_clim,
+                                            response = "BudBreak_cGDD_plasticity",
+                                            variable_predictors = climate_vars,
+                                            constant_predictor = "PC1",
+                                            scale_response = F,
+                                            scale_predictors = F)
+
+
+### Scaled data  
+## Only the predictors are scaled
+budbreak_20_plasticity_models_pred_scaled <- scale_models(data = data_clim,
+                                            response = "BudBreak_cGDD_plasticity",
+                                            variable_predictors = climate_vars,
+                                            constant_predictor = "PC1",
+                                            scale_response = F,
+                                            scale_predictors = T)
+
+## Both the response and predictors are scaled
+budbreak_20_plasticity_models_all_scaled <- scale_models(data = data_clim,
+                                            response = "BudBreak_cGDD_plasticity",
+                                            variable_predictors = climate_vars,
+                                            constant_predictor = "PC1",
+                                            scale_response = T,
+                                            scale_predictors = T)
+```
+
+::::panel-tabset
+
+### Unscaled data  
+```{r}
+#| code-fold: true
+summarize_models(budbreak_20_plasticity_models_unscaled,
+                 coef_names = coef_map_PC1,
+                 output_format = "gt")
+
+```
+
+### Predictors scaled  
+```{r}
+#| code-fold: true
+summarize_models(budbreak_20_plasticity_models_pred_scaled,
+                 coef_names = coef_map_PC1,
+                 output_format = "gt")
+```
+
+### All variables scaled  
+```{r}
+#| code-fold: true
+summarize_models(budbreak_20_plasticity_models_all_scaled,
+                 coef_names = coef_map_PC1,
+                 output_format = "gt")
+
+budbreak_20_plasticity_models_tinytables <- summarize_models(budbreak_20_plasticity_models_all_scaled,
+                                             coef_names = coef_map_PC1,
+                                             output_format = "tinytable")
+
+# tinytable::save_tt(budbreak_20_plasticity_models_tinytables, "./tables/budbreak_20_plasticity_model.docx")
+```
+::::
+
+
+## Compare models using AIC
+```{r}
+#| code-fold: true
+# Compare models using AIC
+model_names <- names(budbreak_20_plasticity_models_unscaled)
+
+budbreak_20_plasticity_aic_unscaled <- sapply(budbreak_20_plasticity_models_unscaled, AIC)
+budbreak_20_plasticity_aic_pred_scaled   <- sapply(budbreak_20_plasticity_models_pred_scaled, AIC)
+budbreak_20_plasticity_aic_all_scaled   <- sapply(budbreak_20_plasticity_models_all_scaled, AIC)
+
+budbreak_20_plasticity_model_comparison <- data.frame(
+                              # Model = model_names,
+                              AIC_Unscaled = budbreak_20_plasticity_aic_unscaled,
+                              AIC_Pred_Scaled = budbreak_20_plasticity_aic_pred_scaled,
+                              AIC_All_Scaled = budbreak_20_plasticity_aic_all_scaled
+                            )
+
+# Order by the best (lowest) AIC from the unscaled models
+budbreak_20_plasticity_model_comparison <- budbreak_20_plasticity_model_comparison[order(budbreak_20_plasticity_model_comparison$AIC_Unscaled), ]
+
+budbreak_20_plasticity_model_comparison |> 
+  DT::datatable(
+    caption = "Bud break plasticity (2020) Model AIC",
+    filter="top",
+    options = list(pageLength = 11)) |> 
+  DT::formatRound(1:3, digits = 2)
+
+```
+
+**Delta AIC**  
+```{r}
+# Calculate AIC for each model
+aic_values <- sapply(budbreak_20_plasticity_models_all_scaled, AIC)
+
+# Calculate delta AIC
+delta_aic <- aic_values - min(aic_values)
+
+# AIC dataframe
+aic_df <- data.frame(
+  AIC = aic_values,
+  delta_AIC = delta_aic
+)
+t(aic_df)
+
+
+# write.csv(t(aic_df), "./tables/budbreak_20_plasticity_AIC.csv")
+```
+
+## Diagnostic plots
+
+::::panel-tabset
+
+### Unscaled data 
+```{r}
+par(mfrow = c(2, 2))
+plot(budbreak_20_plasticity_models_unscaled[["CMD"]])
+
+plot(budbreak_20_plasticity_models_unscaled[["DD18"]])
+```
+
+### Predictors scaled 
+```{r}
+par(mfrow = c(2, 2))
+plot(budbreak_20_plasticity_models_pred_scaled[["CMD"]])
+
+plot(budbreak_20_plasticity_models_pred_scaled[["DD18"]])
+```
+
+### All variables scaled 
+```{r}
+par(mfrow = c(2, 2))
+plot(budbreak_20_plasticity_models_all_scaled[["CMD"]])
+
+plot(budbreak_20_plasticity_models_all_scaled[["DD18"]])
+```
+::::
+:::
+
+--- 
+
+# Figure 4
+
+```{r echo=T, eval=F}
+#| code-fold: true
+# image output
+png(filename = "./figures/paper_figures/Figure4-1.png", width = 16, height = 14, units = "in", res = 300)
+
+# pdf output
+pdf(file = "./figures/paper_figures/Figure4.pdf", width = 16, height = 14)
+```
+
+```{r}
+#| fig-height: 14
+#| fig-width: 16
+#| code-fold: true
+#| message: false
+#| warning: false
+# Use layout for more control
+layout(matrix(c(1,2,3,4), 2, 2, byrow = TRUE))
+
+# Reduce margins
+par(mar = c(2, 1, 2, 2), oma = c(1, 1, 2, 1))
+
+par(cex.lab=2.5) 
+
+# height growth (trait)
+plot_in3d(data=data_clim,x="PAS",y="PC2",z="Growth", shape= "Region", pch = c(16,17,15),grid.lines=25, theta=-140,phi=18,
+                      xlab="PAS",ylab="Genetic PC2",zlab="Height growth",show_legends=FALSE, color_var = "q2")
+
+# height growth (plasticity)
+plot_in3d(data=data_clim,x="PET",y="PC2",z="Growth_plasticity", shape= "Region", pch = c(16,17,15),grid.lines=25, theta=40,phi=18,
+                      xlab="PET",ylab="Genetic PC2",zlab="Height growth (p)",show_legends=FALSE, color_var = "q2")
+
+
+# total dry matter (trait)
+plot_in3d(data=data_clim,x="DD18",y="PC2",z="TotalDry", shape= "Region", pch = c(16,17,15),grid.lines=25, theta=140,phi=20,
+                      xlab="DD18",ylab="Genetic PC2",zlab="Total dry matter",show_legends=FALSE, color_var = "q2")
+
+# total dry matter (plasticity)
+plot_in3d(data=data_clim,x="DD18",y="PC2",z="TotalDry_plasticity", shape= "Region", pch = c(16,17,15),grid.lines=25, theta=140,phi=20,
+                      xlab="DD18",ylab="Genetic PC2",zlab="Total dry matter (p)",show_legends=T, color_var = "q2",
+                      shape_legend_position="bottomright")
+
+# par(cex.lab=5)
+```
+
+```{r echo=T,eval=F}
+#| code-fold: true
+dev.off()
+
+# Reset par
+par(mfrow = c(1, 1))
+```
+
+```{r}
+#| eval: false
+#| echo: false
+
+# testing
+ggplot(data_clim, aes(x=PAS, y=PC2, color=Growth)) + 
+  geom_point(size=3) + scale_color_gradientn(colors=paletteer_c("ggthemes::Sunset-Sunrise Diverging", 30, direction = 1))
+
+plot_in3d(data=data_clim,x="PET",y="PC2",z="Growth", shape= "Region", 
+          pch = c(16,17,15),grid.lines=25, theta=-40,phi=20,
+                      xlab="PET",ylab="Genetic PC2",zlab="Height growth", 
+          show_legends=FALSE, color_var = "q2")
+
+# old growth plot
+# height growth (trait)
+plot_in3d(data=data_clim,x="PAS",y="PC2",z="Growth", shape= "Region", pch = c(16,17,15),grid.lines=25, theta=40,phi=20,
+                      xlab="PAS",ylab="Genetic PC2",zlab="Height growth",show_legends=FALSE, color_var = "q2")
+
+# better growth plot
+plot_in3d(data=data_clim,x="PAS",y="PC2",z="Growth", shape= "Region", pch = c(16,17,15),grid.lines=25, theta=-140,phi=18,
+                      xlab="PAS",ylab="Genetic PC2",zlab="Height growth",show_legends=FALSE, color_var = "q2")
+
+
+plot_in3d(data=data_clim,x="PET",y="PC2",z="Growth_plasticity", shape= "Region", pch = c(16,17,15),grid.lines=25, theta=-40,phi=18,
+                      xlab="PET",ylab="Genetic PC2",zlab="Height growth (p)",show_legends=FALSE, color_var = "q2")
+
+```
+
+
+# Figure S6
+
+```{r echo=T,eval=F}
+#| code-fold: true
+# image output
+png(filename = "./figures/paper_figures/FigureS6-2.png", width = 24, height = 7, units = "in", res = 300)
+
+# pdf output
+pdf(file = "./figures/paper_figures/FigureS6.pdf", width = 24, height = 7)
+```
+
+```{r}
+#| fig-height: 7
+#| fig-width: 24
+#| code-fold: true
+#| message: false
+#| warning: false
+# Use layout for more control
+layout(matrix(c(1,2,3), 1, 3, byrow = TRUE))
+
+# Reduce margins
+par(mar = c(2, 1, 2, 2), oma = c(1, 1, 2, 1))
+
+par(cex.lab=2.5) 
+
+# bud set (trait)
+plot_in3d(data=data_clim,x="DD_0",y="PC1",z="BudSet_2019", shape= "Region", pch = c(16,17,15),grid.lines=25, theta=40,phi=20,
+                      xlab="DD_0",ylab="Genetic PC1",zlab="Bud set (2019)",show_legends=FALSE, color_var = "q2")
+
+# bud break (trait)
+plot_in3d(data=data_clim,x="DD18",y="PC1",z="Budbreak_2020", shape= "Region", pch = c(16,17,15),grid.lines=25, theta=110,phi=20,
+                      xlab="DD18",ylab="Genetic PC1",zlab="Bud break (2020)",show_legends=FALSE, color_var = "q2")
+
+# bud break (plasticity)
+plot_in3d(data=data_clim,x="DD18",y="PC1",z="BudBreak_cGDD_plasticity", shape= "Region", pch = c(16,17,15),grid.lines=25, theta=110,phi=20,
+                      xlab="DD18",ylab="Genetic PC1",zlab="Bud break (p)", color_var = "q2",
+          show_legends=T, shape_legend_position="bottomright")
+
+# par(cex.lab=5)
+```
+
+```{r echo=T,eval=F}
+#| code-fold: true
+dev.off()
+
+# Reset par
+par(mfrow = c(1, 1))
+```
+
+
+```{r}
+# better plot for bud break
+
+# bud break (trait)
+plot_in3d(data=data_clim,x="DD18",y="PC1",z="Budbreak_2020", shape= "Region", pch = c(16,17,15),grid.lines=25, theta=110,phi=20,
+                      xlab="DD18",ylab="Genetic PC1",zlab="Bud break (2020)",show_legends=FALSE, color_var = "q2")
+
+# bud break (plasticity)
+plot_in3d(data=data_clim,x="DD18",y="PC1",z="BudBreak_cGDD_plasticity", shape= "Region", pch = c(16,17,15),grid.lines=25, theta=110,phi=20,
+                      xlab="DD18",ylab="Genetic PC1",zlab="Bud break (p)", color_var = "q2",
+          show_legends=T, shape_legend_position="bottomright")
+```
+
+```{r}
+#| eval: false
+#| echo: false
+
+# old bud break plot
+
+# bud break (trait)
+plot_in3d(data=data_clim,x="DD18",y="PC1",z="Budbreak_2020", shape= "Region", pch = c(16,17,15),grid.lines=25, theta=130,phi=20,
+                      xlab="DD18",ylab="Genetic PC1",zlab="Bud break (2020)",show_legends=FALSE, color_var = "q2")
+
+
+# bud break (plasticity)
+plot_in3d(data=data_clim,x="DD18",y="PC1",z="BudBreak_cGDD_plasticity", shape= "Region", pch = c(16,17,15),grid.lines=25, theta=130,phi=20,
+                      xlab="DD18",ylab="Genetic PC1",zlab="Bud break (p)", color_var = "q2",
+          show_legends=T, shape_legend_position="bottomright")
+```
+

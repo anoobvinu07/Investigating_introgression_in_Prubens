@@ -1,0 +1,85 @@
+0#########################################0
+eigen 2
+0#########################################0
+------------------------------------
+PCAngsd v1.36.1
+Jonas Meisner and Anders Albrechtsen
+Using 24 thread(s)
+------------------------------------
+
+Parsing Beagle file.
+Loaded 2434524 sites and 324 samples.
+Estimating minor allele frequencies.
+EM (MAF) converged at iteration: 28
+Number of sites after MAF filtering (0.05): 1618419
+
+Estimating covariance matrix.
+Using 2 principal components (manually selected).
+Individual allele frequencies estimated (1).
+Individual allele frequencies estimated (2).	RMSE=0.0074182
+Individual allele frequencies estimated (3).	RMSE=0.0067998
+Individual allele frequencies estimated (4).	RMSE=0.0047884
+Individual allele frequencies estimated (5).	RMSE=0.0029041
+Individual allele frequencies estimated (6).	RMSE=0.0016519
+Individual allele frequencies estimated (7).	RMSE=0.0009374
+Individual allele frequencies estimated (8).	RMSE=0.0006058
+Individual allele frequencies estimated (9).	RMSE=0.0005069
+Individual allele frequencies estimated (10).	RMSE=0.0004939
+Individual allele frequencies estimated (11).	RMSE=0.0004909
+Individual allele frequencies estimated (12).	RMSE=0.0004791
+Individual allele frequencies estimated (13).	RMSE=0.0004588
+Individual allele frequencies estimated (14).	RMSE=0.0004320
+Individual allele frequencies estimated (15).	RMSE=0.0004019
+Individual allele frequencies estimated (16).	RMSE=0.0003720
+Individual allele frequencies estimated (17).	RMSE=0.0003424
+Individual allele frequencies estimated (18).	RMSE=0.0003137
+Individual allele frequencies estimated (19).	RMSE=0.0002863
+Individual allele frequencies estimated (20).	RMSE=0.0002604
+Individual allele frequencies estimated (21).	RMSE=0.0002367
+Individual allele frequencies estimated (22).	RMSE=0.0002153
+Individual allele frequencies estimated (23).	RMSE=0.0001958
+Individual allele frequencies estimated (24).	RMSE=0.0001781
+Individual allele frequencies estimated (25).	RMSE=0.0001626
+Individual allele frequencies estimated (26).	RMSE=0.0001488
+Individual allele frequencies estimated (27).	RMSE=0.0001354
+Individual allele frequencies estimated (28).	RMSE=0.0001234
+Individual allele frequencies estimated (29).	RMSE=0.0001127
+Individual allele frequencies estimated (30).	RMSE=0.0001029
+Individual allele frequencies estimated (31).	RMSE=0.0000942
+Individual allele frequencies estimated (32).	RMSE=0.0000859
+Individual allele frequencies estimated (33).	RMSE=0.0000783
+Individual allele frequencies estimated (34).	RMSE=0.0000717
+Individual allele frequencies estimated (35).	RMSE=0.0000660
+Individual allele frequencies estimated (36).	RMSE=0.0000608
+Individual allele frequencies estimated (37).	RMSE=0.0000555
+Individual allele frequencies estimated (38).	RMSE=0.0000510
+Individual allele frequencies estimated (39).	RMSE=0.0000467
+Individual allele frequencies estimated (40).	RMSE=0.0000427
+Individual allele frequencies estimated (41).	RMSE=0.0000391
+Individual allele frequencies estimated (42).	RMSE=0.0000358
+Individual allele frequencies estimated (43).	RMSE=0.0000329
+Individual allele frequencies estimated (44).	RMSE=0.0000301
+Individual allele frequencies estimated (45).	RMSE=0.0000277
+Individual allele frequencies estimated (46).	RMSE=0.0000257
+Individual allele frequencies estimated (47).	RMSE=0.0000239
+Individual allele frequencies estimated (48).	RMSE=0.0000221
+Individual allele frequencies estimated (49).	RMSE=0.0000205
+Individual allele frequencies estimated (50).	RMSE=0.0000190
+Individual allele frequencies estimated (51).	RMSE=0.0000172
+Individual allele frequencies estimated (52).	RMSE=0.0000163
+Individual allele frequencies estimated (53).	RMSE=0.0000151
+Individual allele frequencies estimated (54).	RMSE=0.0000137
+Individual allele frequencies estimated (55).	RMSE=0.0000129
+Individual allele frequencies estimated (56).	RMSE=0.0000117
+Individual allele frequencies estimated (57).	RMSE=0.0000107
+Individual allele frequencies estimated (58).	RMSE=0.0000100
+PCAngsd converged.
+Saved covariance matrix as /netfiles02/kellrlab/Anoob/Polygenic_Adaptation/ANALYSIS/filtering_the_snps_across_REGION/kinship_matrix/pcangsd/red_spruce_fam324_eigen2.cov
+
+Saved genotype dosages as /netfiles02/kellrlab/Anoob/Polygenic_Adaptation/ANALYSIS/filtering_the_snps_across_REGION/kinship_matrix/pcangsd/red_spruce_fam324_eigen2.dosage.npy (Binary)
+
+Saved individual allele frequencies as /netfiles02/kellrlab/Anoob/Polygenic_Adaptation/ANALYSIS/filtering_the_snps_across_REGION/kinship_matrix/pcangsd/red_spruce_fam324_eigen2.pi.npy (Binary)
+
+Creating boolean vector of sites surviving filters.
+Saved boolean vector of sites kept after filtering as /netfiles02/kellrlab/Anoob/Polygenic_Adaptation/ANALYSIS/filtering_the_snps_across_REGION/kinship_matrix/pcangsd/red_spruce_fam324_eigen2.sites
+Total elapsed time: 5m48s

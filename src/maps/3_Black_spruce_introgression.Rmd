@@ -1,0 +1,240 @@
+---
+title: "3_Black_spruce_introgression"
+author: "Anoob Prakash"
+date: '2023-03-25'
+output:
+  rmarkdown::html_document:
+    theme: cosmo  
+    number_sections: false
+    toc: false
+    toc_float: true
+    code_folding: show
+editor_options: 
+  chunk_output_type: console
+---
+
+```{css zoom-lib-src, echo = FALSE}
+script src = "https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"
+```
+
+```{js zoom-jquery, echo = FALSE}
+ $(document).ready(function() {
+    $('body').prepend('<div class=\"zoomDiv\"><img src=\"\" class=\"zoomImg\"></div>');
+    // onClick function for all plots (img's)
+    $('img:not(.zoomImg)').click(function() {
+      $('.zoomImg').attr('src', $(this).attr('src')).css({width: '100%'});
+      $('.zoomDiv').css({opacity: '1', width: 'auto', border: '1px solid white', borderRadius: '5px', position: 'fixed', top: '50%', left: '50%', marginRight: '-50%', transform: 'translate(-50%, -50%)', boxShadow: '0px 0px 50px #888888', zIndex: '50', overflow: 'auto', maxHeight: '100%'});
+    });
+    // onClick function for zoomImg
+    $('img.zoomImg').click(function() {
+      $('.zoomDiv').css({opacity: '0', width: '0%'}); 
+    });
+  });
+```
+
+```{r}
+setwd("Z:/Anoob/Polygenic_Adaptation/ANALYSIS")
+```
+
+```{r message=FALSE, warning=FALSE}
+require(tidyverse)
+require(kableExtra)
+require(formattable)
+require(lmerTest)
+require(tidyverse)
+require(sjPlot)
+require(FactoMineR)
+require(factoextra)
+```
+
+## Data  
+```{r}
+# incorporate ancestry score
+# Get ID and pop info for each individual
+pop<-read.table("filtering_the_snps_across_REGION/REGIONS/324RSfam_18BSfam_bam_VACC.list")
+pop$Family <- str_replace_all(pop$V1,"/netfiles02/kellrlab/datashare/Spruce/exome_capture/WES_mapping/Mapping_WES/ref_Pmariana/BWA/Prubens/NSF/","")
+pop$Family <- str_replace_all(pop$Family,"/netfiles02/kellrlab/datashare/Spruce/exome_capture/WES_mapping/Mapping_WES/ref_Pmariana/BWA/Pmariana/","")
+
+pop$Family <- str_replace_all(pop$Family,".sorted.rmdup.bam","")
+pop <- pop$Family
+dataset <- read.table("filtering_the_snps_across_REGION/admix/Full_Sampling_intersect_poly_updated_with_BS_samples_PCA_admix_K2.admix.2.Q")
+colnames(dataset) <- c("q1","q2")
+
+admix.id = as.data.frame(cbind(pop, dataset))
+names(admix.id) <- c("Family","q1","q2")
+
+# Meta data
+Meta <- read.table("../../BlackSpruce/Info_samples_all.txt", sep="\t",header=T)
+
+# add coordinates 
+dataset <- merge(admix.id,Meta[,c("Family","Region","State","Longitude","Latitude")])
+
+```
+
+## All regions
+```{r echo=FALSE, fig.dim = c(40, 10)}
+# combine RS and BS samples
+data2 <- dataset[,c("Family","Region","Latitude","Longitude","State","q1","q2")]
+# BS_data <- BS_data[,c("Family","Region","Latitude","Longitude","State","q1","q2")]
+# data2 <- rbind(data2,BS_data)
+
+
+# plot per region
+data2 <- gather(data2, pq, value, q1:q2, factor_key=TRUE)
+
+data2$Region <- factor(data2$Region, levels = c("BS","E", "M", "C"),
+                                     labels = c("BS","Edge", "Margin", "Core"))
+```
+
+```{r}
+# data exported for further analysis
+# saveRDS(data2, "../TraitData/family_ancestry_score")
+```
+
+```{r echo=FALSE, fig.dim = c(40, 10)}
+require(forcats)
+
+# Grouped (10h 40w)
+ggplot(data2, aes(fill=pq, y=value, x=fct_reorder(Family, Latitude))) + 
+    geom_bar(position="fill", stat="identity") + 
+  labs(x="Family") +
+  scale_fill_brewer(palette = "Set1") +
+  scale_y_continuous(expand = c(0,0))+ # removes the blank spaces between data and titles
+  facet_grid(.~Region,space = "free_x", scales = "free_x") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+        plot.margin = margin(0.0, 0.0, 0.0, 0.0, unit = "cm"),
+    plot.title = element_text(size = 15, face = "bold"),
+    strip.text.y = element_text(angle = 270, face = "bold"),
+    strip.text.x = element_text(size = 30),
+    strip.placement = "outside",
+    axis.title.x = element_text(margin = margin(t = 0.5, b = 0.5, unit = "cm")),
+    axis.title.y = element_blank(),
+    axis.text = element_text(size = 10),
+    legend.position = "none",
+    panel.grid.major.y = element_blank()) 
+
+# Grouped (10h 40w) - updated figure - July 2025
+data2$Population <- str_extract(data2$Family, "^[^_]+")
+
+ggplot(data2, aes(fill=pq, y=value, x=fct_reorder(Family, Latitude))) + 
+    geom_bar(position="fill", stat="identity", width = 1) + 
+  labs(x="Family", y="Genomic Proportions") +
+  scale_fill_manual(values = c("#EE0000","black")) +
+  scale_y_continuous(expand = c(0,0))+ # removes the blank spaces between data and titles
+  facet_grid(.~Region,space = "free_x", scales = "free_x") +
+  theme_bw() +
+  theme(axis.text.x = element_blank(),
+        # axis.ticks.x = element_blank(),
+        plot.margin = margin(0.0, 0.0, 0.0, 0.0, unit = "cm"),
+    plot.title = element_text(size = 15, face = "bold"),
+    strip.text.y = element_text(angle = 270, face = "bold"),
+    strip.text.x = element_text(size = 20),
+    strip.placement = "outside",
+    axis.title.x = element_text(size = 15, margin = margin(t = 0.5, b = 0.5, unit = "cm")),
+    axis.title.y = element_text(size = 15),
+    axis.text = element_text(size = 15),
+    legend.position = "none",
+    panel.grid.major.y = element_blank())
+
+# ggsave("./figures/paper_figures/Figure2B.png", width = 4000, height = 900, units = "px", type = "cairo")
+# 
+# ggsave("./figures/paper_figures/Figure2B-1.pdf", width = 35, height = 8,dpi=300,
+#        units = "cm")
+```
+
+## Core
+```{r echo=FALSE, fig.dim = c(20, 10)}
+# Core (10h 20w pdf; 2040w 788h jpg)
+ggplot(data2[data2$Region=="Core",], aes(fill=pq, y=value, x=fct_reorder(Family, Latitude))) + 
+    geom_bar(position="fill", stat="identity") + 
+  labs(x="Family") +
+  scale_fill_brewer(palette = "Set1") +
+  scale_y_continuous(expand = c(0,0))+
+  facet_grid(.~Region,space = "free_x", scales = "free_x") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+        plot.margin = margin(0.0, 0.0, 0.0, 0.0, unit = "cm"),
+    plot.title = element_text(size = 15, face = "bold"),
+    strip.text.y = element_text(angle = 270, face = "bold"),
+    strip.text.x = element_text(size = 30),
+    strip.placement = "outside",
+    axis.title.x = element_text(margin = margin(t = 0.5, b = 0.5, unit = "cm")),
+    axis.title.y = element_blank(),
+    axis.text = element_text(size = 10),
+    legend.position = "none",
+    panel.grid.major.y = element_blank()) 
+```
+
+
+```{r echo=FALSE, eval=FALSE, fig.dim = c(20, 10)}
+
+# Testing (10h 20w)
+ggplot(data2[data2$Region=="Core",], aes(fill=pq, y=value, x=fct_reorder(Family, Latitude))) + 
+    geom_bar(position="fill", stat="identity") + 
+  labs(x="Family") +
+  scale_fill_brewer(palette = "Set1") +
+  scale_y_continuous(expand = c(0,0))+
+  facet_grid(.~Region,space = "free_x", scales = "free_x") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+        plot.margin = margin(0.0, 0.0, 0.0, 0.0, unit = "cm"),
+    plot.title = element_text(size = 15, face = "bold"),
+    strip.text.y = element_text(angle = 270, face = "bold"),
+    strip.text.x = element_text(size = 30),
+    strip.placement = "outside",
+    axis.title.x = element_text(margin = margin(t = 0.5, b = 0.5, unit = "cm")),
+    axis.title.y = element_blank(),
+    axis.text = element_text(size = 10),
+    legend.position = "none",
+    panel.grid.major.y = element_blank()) 
+```
+
+## Margin
+```{r echo=FALSE}
+# Margin (10h 15w df; 1285w 788h jpg)
+ggplot(data2[data2$Region=="Margin",], aes(fill=pq, y=value, x=fct_reorder(Family, Latitude))) + 
+    geom_bar(position="fill", stat="identity") + 
+  labs(x="Family") +
+  scale_fill_brewer(palette = "Set1") +
+  scale_y_continuous(expand = c(0,0))+
+  facet_grid(.~Region,space = "free_x", scales = "free_x") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+        plot.margin = margin(0.0, 0.0, 0.0, 0.0, unit = "cm"),
+    plot.title = element_text(size = 15, face = "bold"),
+    strip.text.y = element_text(angle = 270, face = "bold"),
+    strip.text.x = element_text(size = 30),
+    strip.placement = "outside",
+    axis.title.x = element_text(margin = margin(t = 0.5, b = 0.5, unit = "cm")),
+    axis.title.y = element_blank(),
+    axis.text = element_text(size = 10),
+    legend.position = "none",
+    panel.grid.major.y = element_blank()) 
+```
+
+## Edge
+```{r echo=FALSE, fig.dim = c(20, 10)}
+# Edge (10h 20w pdf; 2068w 788h jpg)
+ggplot(data2[data2$Region=="Edge",], aes(fill=pq, y=value, x=fct_reorder(Family, Latitude))) + 
+    geom_bar(position="fill", stat="identity") + 
+  labs(x="Family") +
+  scale_fill_brewer(palette = "Set1") +
+  scale_y_continuous(expand = c(0,0))+
+  facet_grid(.~Region,space = "free_x", scales = "free_x") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+        plot.margin = margin(0.0, 0.0, 0.0, 0.0, unit = "cm"),
+    plot.title = element_text(size = 15, face = "bold"),
+    strip.text.y = element_text(angle = 270, face = "bold"),
+    strip.text.x = element_text(size = 30),
+    strip.placement = "outside",
+    axis.title.x = element_text(margin = margin(t = 0.5, b = 0.5, unit = "cm")),
+    axis.title.y = element_blank(),
+    axis.text = element_text(size = 10),
+    legend.position = "none",
+    panel.grid.major.y = element_blank()) 
+
+```
+
+

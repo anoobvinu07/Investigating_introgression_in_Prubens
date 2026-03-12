@@ -1,0 +1,200 @@
+
+    WARNING: The following active virtual environment has been detected:
+        /gpfs1/sw/rh9/pkgs/pcangsd/1.36.1/pcangsd
+
+    If this virtual environment is active because of a module that you loaded,
+please 
+    unload that module with the command 'module unload <module_name>' and then
+load 
+    the 'pcangsd' module again.
+
+    If you activated this virtual environment directly, then please enter
+'deactivate' 
+    so that no conflicting virtual environments are loaded and then load the
+    'pcangsd' module again.
+
+0#########################################0
+eigen 2
+0#########################################0
+------------------------------------
+PCAngsd v1.36.1
+Jonas Meisner and Anders Albrechtsen
+Using 24 thread(s)
+------------------------------------
+
+Parsing Beagle file.
+Loaded 742942 sites and 324 samples.
+Estimating minor allele frequencies.
+EM (MAF) converged at iteration: 29
+Number of sites after MAF filtering (0.05): 742942
+
+Estimating covariance matrix.
+Using 2 principal components (manually selected).
+Individual allele frequencies estimated (1).
+Individual allele frequencies estimated (2).	RMSE=0.0024964
+Individual allele frequencies estimated (3).	RMSE=0.0017637
+Individual allele frequencies estimated (4).	RMSE=0.0785681
+Individual allele frequencies estimated (5).	RMSE=0.0012420
+Individual allele frequencies estimated (6).	RMSE=0.0010821
+Individual allele frequencies estimated (7).	RMSE=0.0009417
+Individual allele frequencies estimated (8).	RMSE=0.0008219
+Individual allele frequencies estimated (9).	RMSE=0.0007193
+Individual allele frequencies estimated (10).	RMSE=0.0006319
+Individual allele frequencies estimated (11).	RMSE=0.0005584
+Individual allele frequencies estimated (12).	RMSE=0.0004965
+Individual allele frequencies estimated (13).	RMSE=0.0004448
+Individual allele frequencies estimated (14).	RMSE=0.0004003
+Individual allele frequencies estimated (15).	RMSE=0.0003620
+Individual allele frequencies estimated (16).	RMSE=0.0003280
+Individual allele frequencies estimated (17).	RMSE=0.0002985
+Individual allele frequencies estimated (18).	RMSE=0.0002726
+Individual allele frequencies estimated (19).	RMSE=0.0002493
+Individual allele frequencies estimated (20).	RMSE=0.0002283
+Individual allele frequencies estimated (21).	RMSE=0.0002094
+Individual allele frequencies estimated (22).	RMSE=0.0001928
+Individual allele frequencies estimated (23).	RMSE=0.0001777
+Individual allele frequencies estimated (24).	RMSE=0.0001639
+Individual allele frequencies estimated (25).	RMSE=0.0001517
+Individual allele frequencies estimated (26).	RMSE=0.0001403
+Individual allele frequencies estimated (27).	RMSE=0.0001299
+Individual allele frequencies estimated (28).	RMSE=0.0001207
+Individual allele frequencies estimated (29).	RMSE=0.0001121
+Individual allele frequencies estimated (30).	RMSE=0.0001039
+Individual allele frequencies estimated (31).	RMSE=0.0000968
+Individual allele frequencies estimated (32).	RMSE=0.0000900
+Individual allele frequencies estimated (33).	RMSE=0.0000837
+Individual allele frequencies estimated (34).	RMSE=0.0785674
+Individual allele frequencies estimated (35).	RMSE=0.0000725
+Individual allele frequencies estimated (36).	RMSE=0.0000675
+Individual allele frequencies estimated (37).	RMSE=0.0000630
+Individual allele frequencies estimated (38).	RMSE=0.0000588
+Individual allele frequencies estimated (39).	RMSE=0.0000549
+Individual allele frequencies estimated (40).	RMSE=0.0000512
+Individual allele frequencies estimated (41).	RMSE=0.0000478
+Individual allele frequencies estimated (42).	RMSE=0.0000448
+Individual allele frequencies estimated (43).	RMSE=0.0000421
+Individual allele frequencies estimated (44).	RMSE=0.0000392
+Individual allele frequencies estimated (45).	RMSE=0.0000366
+Individual allele frequencies estimated (46).	RMSE=0.0000342
+Individual allele frequencies estimated (47).	RMSE=0.0000321
+Individual allele frequencies estimated (48).	RMSE=0.0000302
+Individual allele frequencies estimated (49).	RMSE=0.0000284
+Individual allele frequencies estimated (50).	RMSE=0.0000266
+Individual allele frequencies estimated (51).	RMSE=0.0000251
+Individual allele frequencies estimated (52).	RMSE=0.0000236
+Individual allele frequencies estimated (53).	RMSE=0.0000220
+Individual allele frequencies estimated (54).	RMSE=0.0000207
+Individual allele frequencies estimated (55).	RMSE=0.0000195
+Individual allele frequencies estimated (56).	RMSE=0.0000184
+Individual allele frequencies estimated (57).	RMSE=0.0000172
+Individual allele frequencies estimated (58).	RMSE=0.0000162
+Individual allele frequencies estimated (59).	RMSE=0.0000153
+Individual allele frequencies estimated (60).	RMSE=0.0000145
+Individual allele frequencies estimated (61).	RMSE=0.0000135
+Individual allele frequencies estimated (62).	RMSE=0.0000127
+Individual allele frequencies estimated (63).	RMSE=0.0000120
+Individual allele frequencies estimated (64).	RMSE=0.0000112
+Individual allele frequencies estimated (65).	RMSE=0.0000107
+Individual allele frequencies estimated (66).	RMSE=0.0000100
+PCAngsd converged.
+Saved covariance matrix as /netfiles02/kellrlab/Anoob/Polygenic_Adaptation/ANALYSIS/filtering_the_snps_across_REGION/minMAF_filtering/minMAF_0.1/Full_Sampling_minMAF_filtering_0.1_PCA_admix_K2_eigen2.cov
+
+Estimating admixture proportions using NMF (CSG-MU).
+K=2, Alpha=0.0, Batches=10, Seed=0
+CSG-MU (1).	RMSE=0.236100068
+CSG-MU (2).	RMSE=0.003044234
+CSG-MU (3).	RMSE=0.267792054
+CSG-MU (4).	RMSE=0.013275271
+CSG-MU (5).	RMSE=0.004154520
+CSG-MU (6).	RMSE=0.006674882
+CSG-MU (7).	RMSE=0.005305318
+CSG-MU (8).	RMSE=0.003715782
+CSG-MU (9).	RMSE=0.002833925
+CSG-MU (10).	RMSE=0.002280948
+CSG-MU (11).	RMSE=0.001930685
+CSG-MU (12).	RMSE=0.001615945
+CSG-MU (13).	RMSE=0.001349131
+CSG-MU (14).	RMSE=0.001143062
+CSG-MU (15).	RMSE=0.000998003
+CSG-MU (16).	RMSE=0.000865449
+CSG-MU (17).	RMSE=0.000768332
+CSG-MU (18).	RMSE=0.000696572
+CSG-MU (19).	RMSE=0.000601298
+CSG-MU (20).	RMSE=0.000544990
+CSG-MU (21).	RMSE=0.000486034
+CSG-MU (22).	RMSE=0.000441031
+CSG-MU (23).	RMSE=0.000398959
+CSG-MU (24).	RMSE=0.000365832
+CSG-MU (25).	RMSE=0.000337703
+CSG-MU (26).	RMSE=0.000310744
+CSG-MU (27).	RMSE=0.000286508
+CSG-MU (28).	RMSE=0.000268881
+CSG-MU (29).	RMSE=0.000250696
+CSG-MU (30).	RMSE=0.000226319
+CSG-MU (31).	RMSE=0.000216639
+CSG-MU (32).	RMSE=0.000198343
+CSG-MU (33).	RMSE=0.000183172
+CSG-MU (34).	RMSE=0.000172884
+CSG-MU (35).	RMSE=0.000157710
+CSG-MU (36).	RMSE=0.000155501
+CSG-MU (37).	RMSE=0.000135910
+CSG-MU (38).	RMSE=0.000135607
+CSG-MU (39).	RMSE=0.000122543
+CSG-MU (40).	RMSE=0.000115839
+CSG-MU (41).	RMSE=0.000111651
+CSG-MU (42).	RMSE=0.000103242
+CSG-MU (43).	RMSE=0.000097740
+CSG-MU (44).	RMSE=0.000091556
+CSG-MU (45).	RMSE=0.000082689
+CSG-MU (46).	RMSE=0.000083575
+CSG-MU (47).	RMSE=0.000075524
+CSG-MU (48).	RMSE=0.000075242
+CSG-MU (49).	RMSE=0.000068460
+CSG-MU (50).	RMSE=0.000067260
+CSG-MU (51).	RMSE=0.000058246
+CSG-MU (52).	RMSE=0.000060615
+CSG-MU (53).	RMSE=0.000056688
+CSG-MU (54).	RMSE=0.000053478
+CSG-MU (55).	RMSE=0.000049979
+CSG-MU (56).	RMSE=0.000044647
+CSG-MU (57).	RMSE=0.000048248
+CSG-MU (58).	RMSE=0.000042328
+CSG-MU (59).	RMSE=0.000040688
+CSG-MU (60).	RMSE=0.000040773
+CSG-MU (61).	RMSE=0.000036287
+CSG-MU (62).	RMSE=0.000033094
+CSG-MU (63).	RMSE=0.000033781
+CSG-MU (64).	RMSE=0.000034942
+CSG-MU (65).	RMSE=0.000030422
+CSG-MU (66).	RMSE=0.000028240
+CSG-MU (67).	RMSE=0.000028950
+CSG-MU (68).	RMSE=0.000026896
+CSG-MU (69).	RMSE=0.000024882
+CSG-MU (70).	RMSE=0.000026851
+CSG-MU (71).	RMSE=0.000022493
+CSG-MU (72).	RMSE=0.000024226
+CSG-MU (73).	RMSE=0.000021241
+CSG-MU (74).	RMSE=0.000021570
+CSG-MU (75).	RMSE=0.000019846
+CSG-MU (76).	RMSE=0.000023393
+CSG-MU (77).	RMSE=0.000016082
+CSG-MU (78).	RMSE=0.000014897
+CSG-MU (79).	RMSE=0.000018619
+CSG-MU (80).	RMSE=0.000017215
+CSG-MU (81).	RMSE=0.000014992
+CSG-MU (82).	RMSE=0.000012950
+CSG-MU (83).	RMSE=0.000016634
+CSG-MU (84).	RMSE=0.000009784
+Converged.
+Frobenius error: 608.83433
+Log-likelihood: -235680873.01352
+Saved admixture proportions as /netfiles02/kellrlab/Anoob/Polygenic_Adaptation/ANALYSIS/filtering_the_snps_across_REGION/minMAF_filtering/minMAF_0.1/Full_Sampling_minMAF_filtering_0.1_PCA_admix_K2_eigen2.admix.2.Q
+Saved ancestral allele frequencies proportions as /netfiles02/kellrlab/Anoob/Polygenic_Adaptation/ANALYSIS/filtering_the_snps_across_REGION/minMAF_filtering/minMAF_0.1/Full_Sampling_minMAF_filtering_0.1_PCA_admix_K2_eigen2.admix.2.P
+
+Saved genotype dosages as /netfiles02/kellrlab/Anoob/Polygenic_Adaptation/ANALYSIS/filtering_the_snps_across_REGION/minMAF_filtering/minMAF_0.1/Full_Sampling_minMAF_filtering_0.1_PCA_admix_K2_eigen2.dosage.npy (Binary)
+
+Saved individual allele frequencies as /netfiles02/kellrlab/Anoob/Polygenic_Adaptation/ANALYSIS/filtering_the_snps_across_REGION/minMAF_filtering/minMAF_0.1/Full_Sampling_minMAF_filtering_0.1_PCA_admix_K2_eigen2.pi.npy (Binary)
+
+Creating boolean vector of sites surviving filters.
+Saved boolean vector of sites kept after filtering as /netfiles02/kellrlab/Anoob/Polygenic_Adaptation/ANALYSIS/filtering_the_snps_across_REGION/minMAF_filtering/minMAF_0.1/Full_Sampling_minMAF_filtering_0.1_PCA_admix_K2_eigen2.sites
+Total elapsed time: 3m58s

@@ -1,0 +1,1187 @@
+---
+title: "Qpc - September 2025"
+author: Anoob Prakash
+lightbox: true
+format: 
+  html:
+    code-overflow: wrap
+    toc: true
+    embed-resources: true
+    code-tools: true
+    code-fold: false
+knitr:
+  opts_knit:
+    root.dir: "Z:/Anoob/Polygenic_Adaptation/ANALYSIS"
+editor_options: 
+  chunk_output_type: console
+---
+
+# Packages required
+
+```{r message=FALSE, warning=FALSE, paged.print=FALSE}
+# packages
+require(stringr)
+require(viridis)
+require(lmerTest)
+require(tidyverse)
+require(qvalue)
+require(readxl)
+require(RcppCNPy)
+require(reticulate)
+require(pheatmap)
+require(tidyr)
+require(reshape2)
+require(plyr)
+require(cowplot)
+require(gridExtra)
+
+# function for Qpc
+source("./Qpc_function.R")
+```
+
+# Data
+
+```{r}
+# Meta data
+Meta <- read.table("../../MCMCglmm/Exome/RS_Exome_metadata.txt", sep="\t",header=T)
+bluptable <- read.csv("../TraitData/trait_blups_complete.csv")
+
+## Covariance between inds 
+### Eigen 2
+cov <- as.matrix(read.table("filtering_the_snps_across_REGION/selection/Full_Sampling_minMAF_filtering_run2_0.1_PCA_eigen2_retest_July2025.cov"))
+
+dim(cov)
+```
+
+```{r}
+## Generating meta data for downstream analysis
+# 324 fam
+# create bam list for the traits being studied
+labels <- read.table("black_spruce/new_324RSfam_bam_VACC.list", stringsAsFactors = F)
+labels$V1 <- str_replace_all(labels$V1,"/netfiles02/kellrlab/datashare/Spruce/exome_capture/WES_mapping/Mapping_WES/ref_Pmariana/BWA/Prubens/NSF/","")
+labels$V1 <- str_replace_all(labels$V1,".sorted.rmdup.bam","")
+colnames(labels) <- "Family"
+
+labels <- as.data.frame(labels) %>%
+              left_join(Meta[, c("Pop", "Family", "Region")], by = c("Family"))
+
+fam_label <- labels$Family
+```
+
+## PCA - pcangsd covariance matrix
+
+```{r}
+eig <- eigen(cov)
+
+# Extract the eigenvalues
+eigenvalues <- eig$values
+
+# Calculate the proportion of variance explained
+var_explained <- eigenvalues / sum(eigenvalues)
+var_explained[1:5]
+
+# add the meta data to the PC components
+pca_scores <- as.data.frame(eig$vectors)
+colnames(pca_scores) <- paste0("PC", 1:ncol(pca_scores))
+
+pca_scores <- cbind(as.data.frame(labels),pca_scores)
+colnames(pca_scores)[1] <- "Family"
+
+# pca_scores <- merge(x=Meta[,c(1,3,5)], y=pca_scores, all.y=T, by="Family")
+pca_scores$Region <- factor(pca_scores$Region, levels=c("C","M","E"),
+                                               labels=c("Core","Margin","Edge"))
+
+# plot(pca_scores$PC1,pca_scores$PC2)
+
+PCplot <- ggplot(pca_scores[!is.na(pca_scores$Region),], 
+                 aes(x = PC1, y = PC2, text=Family, color=Region, shape=Region)) +
+                geom_point(aes(color=Region),  pch = 20,alpha=0.7, size=5) + 
+                labs(x="PC1 (2.5%)", y="PC2 (2.1%)") +
+          scale_color_manual(values = c("Core" = "goldenrod2","Margin" = "green2","Edge" = "steelblue")) +
+          theme_minimal() +
+          theme(
+          axis.text.x=element_text(size=14, angle=0, vjust=0.3),
+          axis.text.y=element_text(size=14),
+          axis.title =element_text(size=14, face = "bold"),
+          plot.title=element_text(size=11),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          legend.position = "top",
+          panel.ontop = TRUE,
+          panel.background = element_rect(fill = "transparent"),
+          panel.grid = element_line(color="black"))  
+
+PCplot
+
+# ggsave("./figures/PCA_red_spruce_cov.png", width = 2000, height = 1200, units = "px", type = "cairo")
+# ggsave("./figures/PCA_red_spruce_cov.pdf", width = 2000, height = 1200, units = "px")
+```
+
+### Make Kinship Matrix
+
+```{r eval=F}
+## Make K matrix
+# run on Wright (HPC cluster)
+
+# Dosage file
+require(RcppCNPy)
+require(reticulate)
+
+
+### eigen 2
+# Dosage file
+require(RcppCNPy)
+require(reticulate)
+
+## Wright 
+setwd("/home/Anoob/mydata/Anoob/Polygenic_Adaptation/ANALYSIS/filtering_the_snps_across_REGION/selection/")
+
+np <- import("numpy")
+data <- as.data.frame(t(np$load("Full_Sampling_minMAF_filtering_run2_0.1_PCA_eigen2_retest_July2025.dosage.npy"))) ## version min maf 0.1
+dim(data) # 742,006
+
+# convert dosage to AF
+Afreqs = data/2
+
+# Now, randomly subsample 100K loci
+total_sites <- dim(Afreqs)[2]
+Loci = seq(1,total_sites,1) 
+Rand.loci = sample(Loci, 1e5, replace=F)
+G = Afreqs[,Rand.loci]
+dim(G)
+
+# modified function  -- working final
+scaleFactor = sqrt(mean(colMeans(G) * (1 - colMeans(G))))
+    myM = dim(G)[1]
+    myT = matrix(data = -1/myM, nrow = myM - 1, ncol = myM)
+    diag(myT) = (myM - 1)/myM
+    myGstand = (myT %*% as.matrix(G))/scaleFactor
+    myK = cov(t(myGstand))
+    
+# kinship used in the paper
+saveRDS(myK,"/home/Anoob/mydata/Anoob/Polygenic_Adaptation/ANALYSIS/filtering_the_snps_across_REGION/kinship_matrix/myK_from_modified_make_KE_run2_0.1_dosage_1e5_eigen2_retest_July2025")
+
+# original function
+make_k_E <- function (myG)
+{
+  scaleFactor = sqrt(mean(colMeans(myG) * (1 - colMeans(myG))))
+    myM = dim(myG)[1]
+    myT = matrix(data = -1/myM, nrow = myM - 1, ncol = myM)
+    diag(myT) = (myM - 1)/myM
+    myGstand = (myT %*% myG)/scaleFactor
+    myK = cov(t(myGstand))
+    return(myK)
+}
+
+myK <- make_k_E(G)
+# end of original function
+
+```
+
+# Q~PC~ Analysis
+
+:::panel-tabset
+## Heatmap
+
+```{r}
+
+myK <- readRDS("filtering_the_snps_across_REGION/kinship_matrix/myK_from_modified_make_KE_run2_0.1_dosage_1e5_eigen2_retest_July2025")
+
+# bam list
+kinship_labels <- read.table("black_spruce/new_324RSfam_bam_VACC.list", stringsAsFactors = F)
+kinship_labels$V1 <- str_replace_all(kinship_labels$V1,"/netfiles02/kellrlab/datashare/Spruce/exome_capture/WES_mapping/Mapping_WES/ref_Pmariana/BWA/Prubens/NSF/","")
+kinship_labels$V1 <- str_replace_all(kinship_labels$V1,".sorted.rmdup.bam","")
+kinship_labels <- kinship_labels$V1
+
+# plot the kinship matrix map
+heat_K <- myK
+
+row.names(heat_K) = kinship_labels[1:dim(heat_K)[1]]
+colnames(heat_K) <- kinship_labels[1:dim(heat_K)[1]]
+
+# my_sample_col <- data.frame(1:332,1:332)
+my_sample_col <- as.data.frame(colnames(heat_K))
+colnames(my_sample_col) <- "Family"
+
+my_sample_col <- left_join(my_sample_col,Meta,by="Family")
+my_sample_col$Species <- NULL
+
+my_sample_col$Region <- factor(my_sample_col$Region,levels=c("C","M","E"),
+                               labels=c("Core","Margin","Edge"))
+Region <- as.data.frame(as.character(my_sample_col$Region))
+colnames(Region) <- "Region"
+rownames(Region) <- colnames(heat_K)
+
+# Specify colors
+ann_colors = list(
+    # Species = c(BlackSpruce="black", RedSpruce="firebrick"),
+    Region = c(Core = "goldenrod2", Margin = "green2", 
+               Edge = "steelblue")
+)
+
+
+diag(heat_K) <- NA
+
+# png(file="./figures/Qpc/heatmap_pcangsd_cov.png", width=3000,height=2800,units = "px")
+heatmap <- pheatmap(heat_K, 
+           annotation_row = Region,
+           annotation_col = Region,
+           annotation_colors = ann_colors,
+           # cutree_rows = 2,
+           # cutree_cols = 2,
+           col=viridis(400),
+           show_rownames = F,
+           annotation_names_row = F,
+           show_colnames = F,
+           labels_row = F)
+
+heatmap
+
+# ggsave("./figures/Qpc/heatmap_pcangsd_cov.png", width = 3000, height = 2800, units = "px", type = "cairo")
+```
+
+## PCA of K-matrix
+
+```{r}
+myK <- readRDS("filtering_the_snps_across_REGION/kinship_matrix/myK_from_modified_make_KE_run2_0.1_dosage_1e5_eigen2_retest_July2025")
+#do the eigen decomposition
+eigF = eigen(myK)
+myU = eigF$vectors
+myLambdas = eigF$values
+
+# calculate the PC cutoffs we're using for tests of selection
+varexp = myLambdas/sum(myLambdas)
+sumexp = sapply(1:length(varexp), function(x){sum(varexp[1:x])})
+
+plot(sumexp[1:5])
+
+sumexp[2] # take the first 4 PCs to account for the population structure 
+cutoff <- sumexp[2]
+#get cutoffs for how many pcs to look at
+pcmax = which(sumexp > (cutoff-0.005))[1]
+pcmax
+
+# Extract the eigenvalues
+eigenvalues <- eigF$values
+
+# Calculate the proportion of variance explained
+var_explained <- eigenvalues / sum(eigenvalues)
+var_explained[1:5]
+
+
+# add the meta data to the PC components
+pca_scores <- as.data.frame(eigF$vectors)
+colnames(pca_scores) <- paste0("PC", 1:ncol(pca_scores))
+
+# add row names
+pca_scores <- cbind(as.data.frame(kinship_labels[1:323]),pca_scores)
+colnames(pca_scores)[1] <- "Family"
+
+# add meta data
+pca_scores <- left_join(x=pca_scores, y=Meta, by="Family")
+
+# pca_scores <- merge(x=Meta[,c(1,3,5)], y=pca_scores, all.y=T, by="Family")
+pca_scores$Region <- factor(pca_scores$Region, levels=c("C","M","E"),
+                                               labels=c("Core","Margin","Edge"))
+
+par(mfrow=c(1,1))
+# varinace explained
+plot(myLambdas, bty="n", xlab = "PCs", ylab = "Eigenvalues")
+abline(v = pcmax, col = viridis(6)[3], lwd=2)
+tailCutoff=0.9
+
+ mydfs <- apply(bluptable[,-1], 2, function(x){calcQpc(
+                                                myZ = x, 
+                                                myU = eigF$vectors, 
+                                                myLambdas = eigF$values, 
+                                                myPCcutoff=cutoff,
+                                                vapcs = 110,    # the number of pcs used to estimate Va
+                                                tailCutoff = 0.9 
+                                              )})
+```
+
+**Variance explained by PC axis**
+
+```{r}
+var_explained[1:5]*100
+```
+
+```{r}
+PCplot <- ggplot(pca_scores[!is.na(pca_scores$Region),], aes(x = PC1, y = PC2, text=Family, color=Region, shape=Region)) +
+                geom_point(aes(color=Region),  shape=1, alpha=0.9, size=5) + 
+                labs(x="PC1 (7.7%)", y="PC2 (6.1%)") +
+          scale_color_manual(values = c("Core" = "goldenrod2","Margin" = "green2","Edge" = "steelblue")) +
+          theme_minimal() +
+          theme(
+          axis.text.x=element_text(size=14, angle=0, vjust=0.3),
+          axis.text.y=element_text(size=14),
+          axis.title =element_text(size=14, face = "bold"),
+          plot.title=element_text(size=11),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          legend.position = "top",
+          panel.ontop = TRUE,
+          panel.background = element_rect(fill = "transparent"),
+          panel.grid = element_line(color="black"))  
+
+PCplot
+
+# ggsave("./figures/Qpc/make_K_E_PCA1_PCA2.png", width = 2000, height = 2000, units = "px", type = "cairo")
+
+PCplot2 <- ggplot(pca_scores[!is.na(pca_scores$Region),], aes(x = PC1, y = PC3, text=Family, color=Region, shape=Region)) +
+                geom_point(aes(color=Region),  shape=1, alpha=0.9, size=5) + 
+                labs(x="PC1 (7.7%)", y="PC3 (0.4%)") +
+          scale_color_manual(values = c("Core" = "goldenrod2","Margin" = "green2","Edge" = "steelblue")) +
+          theme_minimal() +
+          theme(
+          axis.text.x=element_text(size=14, angle=0, vjust=0.3),
+          axis.text.y=element_text(size=14),
+          axis.title =element_text(size=14, face = "bold"),
+          plot.title=element_text(size=11),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          legend.position = "top",
+          panel.ontop = TRUE,
+          panel.background = element_rect(fill = "transparent"),
+          panel.grid = element_line(color="black")) 
+
+PCplot2
+
+# ggsave("./figures/Qpc/make_K_E_PCA2_PCA3.png", width = 2000, height = 2000, units = "px", type = "cairo")
+```
+
+## Generate pvalues and qvalues
+
+```{r}
+getqvalues <- function(ptable){
+  qobj = qvalue(p = c(ptable))
+  myqvals = matrix(qobj$qvalues, nrow=dim(ptable)[1])
+  return(myqvals)
+}
+
+# No. of traits observed - 1
+traitObs <- 21
+
+allpvals = sapply(1:22, function(x){mydfs[[x]]$pvals})
+myqvals = getqvalues(allpvals)
+```
+
+**plot the pvalues**
+
+-   before FDR correction\
+
+```{r}
+#| fig-height: 8
+#| fig-width: 6
+layout(matrix(1, nrow=1, ncol=1))
+mysig2 =  cut((1:1000/1000), c(0,0.001,0.01,0.05,0.1,1)) #for legend
+par(mar=c(8,13,1,1), xpd=TRUE, mfrow=c(1,1)) # par(mar=c(8,14,2,2),
+mycol = c(viridis(6, direction=1)[1:4], "white")
+image(allpvals, col=mycol, xaxt="n", yaxt="n", bty="n", breaks=c(0,0.001,0.01,0.05,0.1,1))
+axis(1, at=seq(0,1, length=pcmax), las=2, label=1:pcmax)
+axis(2, at=(0:traitObs)/traitObs, labels = colnames(bluptable[,-1]), las=2)  
+legend(-0.5,-0.20, levels(mysig2), fill=mycol, bty="n", horiz=T)
+```
+
+**plot the qvalues**
+
+-   after FDR correction\
+
+```{r}
+#| fig-height: 8
+#| fig-width: 6
+layout(matrix(1, nrow=1, ncol=1))
+mysig2 =  cut((1:1000/1000), c(0,0.001,0.01,0.05,0.1,1)) #for legend
+par(mar=c(8,13,1,1), xpd=TRUE, mfrow=c(1,1)) # par(mar=c(8,14,2,2),
+mycol = c(viridis(6, direction=1)[1:4], "white")
+image(myqvals, col=mycol, xaxt="n", yaxt="n", bty="n", breaks=c(0,0.001,0.01,0.05,0.1,1))
+axis(1, at=seq(0,1, length=pcmax), las=2, label=1:pcmax)
+axis(2, at=(0:traitObs)/traitObs, labels = colnames(bluptable[,-1]), las=2)  
+legend(-0.5,-0.20, levels(mysig2), fill=mycol, bty="n", horiz=T)
+```
+
+## Sensitivity testing
+
+**Testing the sensitivity for the choice of PCs used to estimate Va**
+
+-   Use all PCs\
+-   Use 110 PCs\
+-   Use 50 PCs\
+
+```{r}
+trait_num <- 22
+## try with all PCS below the cutoff 
+mydfsAllpcs = apply(bluptable[,-1], 2, function(x){calcQpc(
+  myZ = x, myU = eigF$vectors, myLambdas = eigF$values, myPCcutoff=cutoff, vapcs = 323, tailCutoff = 1
+)})
+
+allpvalsAllpcs = sapply(1:trait_num, function(x){mydfsAllpcs[[x]]$pvals})
+myqvalsAllpcs = getqvalues(allpvalsAllpcs)
+
+#use only 50 PCs
+mydfs50pcs = apply(bluptable[,-1], 2, function(x){calcQpc(
+  myZ = x, myU = eigF$vectors, myLambdas = eigF$values, myPCcutoff=cutoff, vapcs = 50, tailCutoff = 0.9
+)})
+
+allpvals50pcs = sapply(1:trait_num, function(x){mydfs50pcs[[x]]$pvals})
+myqvals50pcs = getqvalues(allpvals50pcs)
+
+```
+
+**changing the number of PCs used - before FDR**
+
+```{r}
+layout(matrix(1, nrow=1, ncol=1))
+mysig2 =  cut((1:1000/1000), c(0,0.001,0.01,0.05,0.1,1)) #for legend
+par(mar=c(8,10,2,2), xpd=TRUE, mfrow=c(1,1), mfrow=c(1,3))
+mycol = c(viridis(6, direction=1)[1:4], "white")
+
+## changing the number of PCs used - before FDR 
+image(allpvalsAllpcs, col=mycol, xaxt="n", yaxt="n", bty="n", breaks=c(0,0.001,0.01,0.05,0.1,1))
+axis(1, at=seq(0,1, length=pcmax), las=2, label=1:pcmax)
+axis(2, at=(0:traitObs)/traitObs, labels = colnames(bluptable[,-1]), las=2)
+legend(-0.2,-0.15, levels(mysig2), fill=mycol, bty="n", horiz=T)
+
+image(allpvals, col=mycol, xaxt="n", yaxt="n", bty="n", breaks=c(0,0.001,0.01,0.05,0.1,1))
+axis(1, at=seq(0,1, length=pcmax), las=2, label=1:pcmax)
+axis(2, at=(0:traitObs)/traitObs, labels = colnames(bluptable[,-1]), las=2)
+legend(-0.2,-0.15, levels(mysig2), fill=mycol, bty="n", horiz=T)
+
+image(allpvals50pcs, col=mycol, xaxt="n", yaxt="n", bty="n", breaks=c(0,0.001,0.01,0.05,0.1,1))
+axis(1, at=seq(0,1, length=pcmax), las=2, label=1:pcmax)
+axis(2, at=(0:traitObs)/traitObs, labels = colnames(bluptable[,-1]), las=2)
+legend(-0.2,-0.15, levels(mysig2), fill=mycol, bty="n", horiz=T)
+
+par(mfrow=c(1,1))
+```
+
+**changing the number of PCs used - after FDR**
+
+```{r}
+layout(matrix(1, nrow=1, ncol=1))
+mysig2 =  cut((1:1000/1000), c(0,0.001,0.01,0.05,0.1,1)) #for legend
+par(mar=c(8,10,2,2), xpd=TRUE, mfrow=c(1,1), mfrow=c(1,3))
+mycol = c(viridis(6, direction=1)[1:4], "white")
+
+## changing the number of PCs used - after FDR
+image(myqvalsAllpcs, col=mycol, xaxt="n", yaxt="n", bty="n", breaks=c(0,0.001,0.01,0.05,0.1,1))
+axis(1, at=seq(0,1, length=pcmax), las=2, label=1:pcmax)
+axis(2, at=(0:traitObs)/traitObs, labels = colnames(bluptable[,-1]), las=2)
+legend(-0.2,-0.15, levels(mysig2), fill=mycol, bty="n", horiz=T)
+
+image(myqvals, col=mycol, xaxt="n", yaxt="n", bty="n", breaks=c(0,0.001,0.01,0.05,0.1,1))
+axis(1, at=seq(0,1, length=pcmax), las=2, label=1:pcmax)
+axis(2, at=(0:traitObs)/traitObs, labels = colnames(bluptable[,-1]), las=2)
+legend(-0.2,-0.15, levels(mysig2), fill=mycol, bty="n", horiz=T)
+
+image(myqvals50pcs, col=mycol, xaxt="n", yaxt="n", bty="n", breaks=c(0,0.001,0.01,0.05,0.1,1))
+axis(1, at=seq(0,1, length=pcmax), las=2, label=1:pcmax)
+axis(2, at=(0:traitObs)/traitObs, labels = colnames(bluptable[,-1]), las=2)
+legend(-0.2,-0.15, levels(mysig2), fill=mycol, bty="n", horiz=T)
+
+par(mfrow=c(1,1))
+```
+::: 
+
+# Q~PC~ visualization  
+:::panel-tabset  
+
+## Data wrangling
+```{r}
+### pvalues
+mypvals_df <- as.data.frame(allpvals)
+colnames(mypvals_df) <- c("Budbreak_2020","BudSet_2019","BudSet_2020","Height_growth",
+                          "BudBreak_2020_plasticity","BudSet_2019_plasticity",
+                          "BudSet_2020_plasticity","Growth_plasticity",
+                          "TotalDry_plasticity","RootShoot_plasticity",
+                          "SideBranch_MainStem_plasticity","Delta13Carbon_plasticity",
+                          "Delta15Nitrogen_plasticity","PercentN_plasticity",
+                          "CN_ratio_plasticity","TotalDry_biomass","RootShoot","SideBranch_MainStem",
+                          "Delta13Carbon","Delta15Nitrogen","PercentN","CN_ratio")
+mypvals_df$PC <- seq(1:nrow(mypvals_df))
+
+# mypvals_long <- melt(mypvals_df)
+
+mypvals_df <- mypvals_df %>% pivot_longer(names_to = "Trait", cols = Budbreak_2020:CN_ratio)
+
+mypvals_df$Sig <- cut(mypvals_df$value, c(0,0.001,0.01,0.05,0.1,1))
+colnames(mypvals_df)[3] <- "pvalue"
+
+mypvals_df2 <- mypvals_df
+mypvals_df2$Category <- NA
+mypvals_df2$mergeColumn <- paste0(mypvals_df2$Trait,"_",mypvals_df2$PC)
+
+### qvalues
+myqvals_df <- as.data.frame(myqvals)
+colnames(myqvals_df) <- c("Budbreak_2020","BudSet_2019","BudSet_2020","Height_growth",
+                          "BudBreak_2020_plasticity","BudSet_2019_plasticity",
+                          "BudSet_2020_plasticity","Growth_plasticity",
+                          "TotalDry_plasticity","RootShoot_plasticity",
+                          "SideBranch_MainStem_plasticity","Delta13Carbon_plasticity",
+                          "Delta15Nitrogen_plasticity","PercentN_plasticity",
+                          "CN_ratio_plasticity","TotalDry_biomass","RootShoot","SideBranch_MainStem",
+                          "Delta13Carbon","Delta15Nitrogen","PercentN","CN_ratio")
+myqvals_df$PC <- seq(1:nrow(myqvals_df))
+
+# myqvals_long <- melt(myqvals_df)
+
+myqvals_df <- myqvals_df %>% pivot_longer(names_to = "Trait", cols = Budbreak_2020:CN_ratio)
+
+colnames(myqvals_df)[3] <- "qvalue"
+
+# set FDR cutoff
+myqvals_df$FDR <- ifelse(myqvals_df$qvalue<=0.1,myqvals_df$qvalue,NA)
+
+myqvals_df2 <- myqvals_df
+myqvals_df2$mergeColumn <- paste0(myqvals_df2$Trait,"_",myqvals_df2$PC)
+
+## Merge pvals and qvals
+pq_vals <- merge(mypvals_df2,myqvals_df2)
+
+par(mfrow=c(2,1))
+hist(pq_vals$pvalue)
+hist(pq_vals$qvalue)
+par(mfrow=c(1,1))
+```
+
+**Create categories for the facet wrapping**
+
+```{r}
+pq_vals <- pq_vals %>%
+                  mutate(Category = case_when(
+                    endsWith(Trait, "plasticity") ~ "Trait Plasticity",
+                    endsWith(Trait, "2019") ~ "Phenology",
+                    endsWith(Trait, "2020") ~ "Phenology",
+                    endsWith(Trait, "Height_growth") ~"Growth & Biomass",
+                    endsWith(Trait,"Stem") ~ "Growth & Biomass",
+                    endsWith(Trait, "TotalDry_biomass") ~ "Growth & Biomass",
+                    endsWith(Trait, "RootShoot") ~ "Growth & Biomass",
+                    endsWith(Trait,"Nitrogen") ~ "Physiology",
+                    endsWith(Trait,"Carbon") ~ "Physiology",
+                    endsWith(Trait, "PercentN") ~ "Physiology",
+                    endsWith(Trait,"CN_ratio") ~ "Physiology"
+                    ))
+pq_vals$Trait <- factor(pq_vals$Trait,levels = c("SideBranch_MainStem","RootShoot","TotalDry_biomass",
+                                                 "Height_growth",
+                                                 "CN_ratio","PercentN","Delta15Nitrogen","Delta13Carbon",
+                                                 "Growth_plasticity","TotalDry_plasticity","RootShoot_plasticity",
+                                                 "SideBranch_MainStem_plasticity","Delta13Carbon_plasticity",
+                                                 "Delta15Nitrogen_plasticity","PercentN_plasticity",
+                                                 "CN_ratio_plasticity","BudBreak_2020_plasticity",
+                                                 "BudSet_2020_plasticity","BudSet_2019_plasticity",
+                                                 "Budbreak_2020","BudSet_2020","BudSet_2019"))
+# rename the category labels for the manuscript
+pq_vals$Figure_axis_text <- revalue(pq_vals$Trait,
+                                               c(SideBranch_MainStem = "Side branch:Main stem",
+                                               RootShoot = "Root:Shoot",
+                                               TotalDry_biomass = "Total dry biomass",
+                                               Height_growth = "Height growth",
+                                               CN_ratio = "C:N",
+                                               PercentN = "Percent N",
+                                               Delta15Nitrogen = "delta 15N",
+                                               Delta13Carbon = "delta 13C",
+                                               Growth_plasticity = "Height growth",
+                                               TotalDry_plasticity = "Total dry biomass",
+                                               RootShoot_plasticity = "Root:Shoot",
+                                               SideBranch_MainStem_plasticity = "Side branch:Main stem",
+                                               Delta13Carbon_plasticity = "delta 13C",
+                                               Delta15Nitrogen_plasticity = "delta 15N",
+                                               PercentN_plasticity = "Percent N",
+                                               CN_ratio_plasticity = "C:N",
+                                               BudBreak_2020_plasticity = "Bud break (2020)",
+                                               BudSet_2020_plasticity = "Bud set (2020)",
+                                               BudSet_2019_plasticity = "Bud set (2019)",
+                                               Budbreak_2020 = "Bud break (2020)",
+                                               BudSet_2020 = "Bud set (2020)",
+                                               BudSet_2019 = "Bud set (2019)"))
+
+
+
+
+# save eigen2 qvals
+eigen2_qvals <- pq_vals
+```
+
+## Q~PC~ plot   
+
+- with FDR<0.1 cutoff  
+
+```{r}
+#| warning: false
+#| fig-height: 4
+#| fig-width: 14
+# pdf dim = 6.65w, 10.86h in inches
+# plotting Qpc plot - in USE and improved
+
+require(paletteer)
+sig_levels <- as.character(levels(pq_vals$Sig))
+
+pq_vals$Figure_axis_text <- factor(pq_vals$Figure_axis_text,
+                                   levels=c("Height growth","Total dry biomass","Root:Shoot",
+                                   "Side branch:Main stem","Bud set (2019)","Bud set (2020)",
+                                   "Bud break (2020)","delta 13C","delta 15N","Percent N","C:N"))
+
+pq_vals_modified <- pq_vals[pq_vals$PC==c(1,2),]
+
+
+# Horizontal Qpc plot
+qpc_plot <- ggplot(pq_vals, aes(x = Figure_axis_text, y = PC)) + 
+                    geom_raster(aes(fill=Sig),hjust =0.5,
+                                vjust =0.5) + 
+                    scale_fill_manual(values = c("#586085", "#d65b5a", "#ea9656","#eeeee4")) +
+                    # highlight qvalue FDR <=0.05
+                    geom_point(aes(size=ifelse(FDR, "dot", "no_dot"),color =ifelse(FDR<=0.1, 'white'))) +  
+                       scale_color_identity() +
+                       scale_size_manual(values=c(dot=4, no_dot=NA), guide="none") +   
+                    # coord_cartesian(xlim=c(0.75, 5)) +
+                    coord_cartesian(ylim=c(0.65, 2.35)) +
+                    scale_y_continuous(breaks = 1:2, labels = as.character(1:2)) +
+                    scale_x_discrete(expand = c(0, 0)) +
+                    labs(x="", y="PC", title="",fill="Significance level") +
+                    theme_bw() + 
+                    theme(axis.text.x=element_text(size=10, angle=45, hjust=1),
+                                       axis.text.y=element_text(size=14),
+                                       plot.title=element_text(size=12),
+                                       legend.spacing.x = unit(2.0, 'cm'),
+                                       # plot.margin = margin(t=0, # top margin
+                                       #                      r=0.25, # right margin
+                                       #                      b=0, # bottom margin
+                                       #                      l=0.5, # left margin
+                                       #                      unit="cm"),
+                                       panel.grid.major = element_blank(),
+                                       panel.grid.minor = element_blank(),
+                                       panel.ontop = TRUE,
+                                       panel.background = element_rect(fill = "transparent"),
+                                       panel.grid = element_line(color="black"),
+                                       legend.position = "top") + 
+                    facet_grid(.~Category,scales = "free", space = "free")
+qpc_plot 
+
+# ggsave("./figures/Qpc/Qpc_BS_ref_wide.png", width = 3000, height = 1200, units = "px", type = "cairo")
+# 
+# ggsave("./figures/Qpc/Qpc_BS_ref_horizontal_paper_legend_modified.png", width = 3000, height = 1200,
+#        units = "px", type = "cairo")
+```
+
+## Incorporate the ancestry score
+
+```{r}
+# Meta data
+Meta <- read.table("../../BlackSpruce/Info_samples_all.txt", sep="\t",header=T)
+
+# Get ID and pop info for each individual
+pop<-read.table("filtering_the_snps_across_REGION/REGIONS/324RSfam_18BSfam_bam_VACC.list")
+pop$Family <- str_replace_all(pop$V1,"/netfiles02/kellrlab/datashare/Spruce/exome_capture/WES_mapping/Mapping_WES/ref_Pmariana/BWA/Prubens/NSF/","")
+pop$Family <- str_replace_all(pop$Family,"/netfiles02/kellrlab/datashare/Spruce/exome_capture/WES_mapping/Mapping_WES/ref_Pmariana/BWA/Pmariana/","")
+
+pop$Family <- str_replace_all(pop$Family,".sorted.rmdup.bam","")
+pop <- pop$Family
+
+# row_meta <- dplyr::inner_join(Meta,pop,by="Family")
+# row_meta$row_index <- as.numeric(row.names(row_meta))
+# 
+# pop <- row_meta[,colnames(row_meta)!=c("V1","row_index")]
+
+
+# Read inferred admixture proportions file
+q<-read.table("filtering_the_snps_across_REGION/selection/Full_Sampling_minMAF_filtering_admix_K2_e1_July2025.admix.2.Q")
+colnames(q) <- c("q1","q2")
+
+admix.id = as.data.frame(cbind(pop, q))
+names(admix.id) <- c("Family","q1","q2")
+# admix.id = admix.id[,c("Family","q1","q2")] # q2 is the proportion of BS ancestry in the sample
+
+#subset out the trait data ancestry scores from pcangsd admix values  
+ancestry <- admix.id[admix.id$Family %in% kinship_labels,]
+```
+
+```{r class.source = 'fold-hide'}
+#read in population data and merge with traits and eigenvectors
+fgmerge <- left_join(pca_scores,bluptable,by="Family")
+fgmerge$Region <- as.factor(fgmerge$Region)
+# fgmerge$Region <- plyr::revalue(fgmerge$Region, c("C"="Core", "M"="Margin", "E" = "Edge")) 
+fgmerge$Region <- factor(fgmerge$Region,levels = c("Core", "Margin", "Edge"))
+
+palette(viridis(3))
+nicepops = c('Core','Margin','Edge')
+indvar = sqrt(diag(as.matrix(myK)))
+```
+
+```{r}
+#| warning: false
+
+fgmerge <- merge(x=fgmerge,y=ancestry,all.x=T,by="Family")
+
+fgmerge <- fgmerge[,c("Family","PC1","PC2","PC3","PC4","Pop","Tree","State","Region","Date","Latitude","Longitude","Elevation",
+                      "DBH","Budbreak_2020","BudSet_2019","BudSet_2020","Growth","BudBreak_cGDD_plasticity",
+                      "BudSet_2019_plasticity","BudSet_2020_plasticity","Growth_plasticity","TotalDry_plasticity",
+                      "RootShoot_plasticity","SideBranch_MainStem_plasticity","Delta13Carbon_plasticity",
+                      "Delta15Nitrogen_plasticity","PercentN_plasticity","CN_ratio_plasticity","TotalDry","RootShoot",
+                      "SideBranch_MainStem","delta13C","delta15N","percentN","CN_ratio","q1","q2")]
+
+# write out the results 
+# write.csv(fgmerge,"data/Qpc_data.csv",row.names = F)
+```
+
+
+```{r}
+# PCA - variance explained
+var_explained[1:5]*100
+# PC plots - PC plot for paper
+PC1_PC2_plot <- ggplot(fgmerge, aes(x = PC1, y = PC2,color = q1,shape=Region) ) +
+                        geom_point( size=4, alpha=0.9) +
+                labs(x="PC1 (7.7%)", y="PC2 (6.1%)") +
+                # scale_shape_manual() +
+                # scale_color_manual(values=c("goldenrod2", "green2", "steelblue")) +
+                scale_color_gradient("Ancestry",low = "grey95",high = "#251714FF") +
+                # geom_abline(intercept=mean(fgmerge[[y]]),slope=1.96*CI[1],lty=2, col=viridis(6)[3], lwd=1) +
+                # geom_abline(intercept=mean(fgmerge[[y]]),slope=-1.96*CI[1],lty=2, col=viridis(6)[3], lwd=1) +
+                # geom_smooth(aes(x=PC2, y=Growth),method="lm",se=FALSE,formula = y ~ x,inherit.aes = FALSE, lwd=1) +
+                theme_bw(base_size = 11, base_family = "Times") +
+                theme(axis.text=element_text(size=14), 
+                      axis.title=element_text(size=12),
+                      # panel.background = element_blank(), 
+                      legend.background = element_blank(), 
+                      panel.grid = element_blank(), 
+                      panel.background = element_rect(fill = "transparent"), 
+                      legend.text=element_text(size=rel(.8)), 
+                      strip.text = element_text(size=30),
+                      legend.position = "none")
+PC1_PC2_plot
+#FF9898FF #D9636CFF #A91E45FF #691238FF #251714FF
+
+# ggsave("./figures/Qpc/make_K_E_PCA1_PCA2_ancestry_coloring.png", width = 2500, height = 2000, units = "px", type = "cairo")
+
+var_explained[1:5]
+# PC plots - PC plot for paper
+PC_region_plot <- ggplot(fgmerge, aes(x = PC1, y = PC2,text=Family, color=Region, shape=Region)) +
+                  geom_point(aes(color=Region),  shape=1, alpha=0.9, size=5) + 
+                  labs(x="PC1 (8%)", y="PC2 (0.6%)") +
+                  scale_color_manual(values = c("Core" = "goldenrod2",
+                                                "Margin" = "green2",
+                                                "Edge" = "steelblue")) +
+                  theme_minimal() +
+                  theme(
+                  axis.text.x=element_text(size=14, angle=0, vjust=0.3),
+                  axis.text.y=element_text(size=14),
+                  axis.title =element_text(size=14, face = "bold"),
+                  plot.title=element_text(size=11),
+                  panel.grid.major = element_blank(),
+                  panel.grid.minor = element_blank(),
+                  legend.position = "top",
+                  panel.ontop = TRUE,
+                  panel.background = element_rect(fill = "transparent"),
+                  panel.grid = element_line(color="black"))
+
+
+
+# ggsave("./figures/Qpc/make_K_E_PCA1_PCA2.png", width = 2000, height = 2000, units = "px", type = "cairo")
+
+
+
+```
+
+## Choice of Eigen
+
+```{r}
+cov_20 <- as.matrix(read.table("filtering_the_snps_across_REGION/selection/Full_Sampling_minMAF_filtering_run2_0.1_PCA_eigen20_retest_July2025.cov"))
+
+dim(cov_20)
+
+eig_20 <- eigen(cov_20)
+# plot(eig$vectors[,1:2], xlab="PC1", ylab="PC2", main="PCAngsd")
+
+# Extract the eigenvalues
+eigenvalues_20 <- eig_20$values
+
+# Calculate the proportion of variance explained
+var_explained_20 <- eigenvalues_20 / sum(eigenvalues_20)
+barplot(var_explained_20[1:25])
+
+# Suppose var_explained_20 is your vector of proportions for the first 25 PCs
+df <- data.frame(
+  PC = factor(1:25),
+  Variance_Explained = var_explained_20[1:25]
+)
+
+ggplot(df, aes(x = PC, y = Variance_Explained)) +
+  geom_bar(stat = "identity", fill = "#EE799F") +
+  geom_text(aes(label = sprintf("%.3f", Variance_Explained)), vjust = -0.5, size = 2) +
+  theme_minimal(base_size = 14) +
+  labs(
+    
+    x = "Principal Component",
+    y = "Proportion of Variance Explained"
+  ) +
+  theme(
+    panel.grid.major.y = element_line(color = "grey90"),
+    axis.text.x = element_text(angle = 0, hjust = 1)
+  ) + theme_blank() +
+  ylim(0, max(df$Variance_Explained) * 1.10)
+
+# ggsave("./figures/paper_figures/FigureS3.png", width = 2200, height = 1200, units = "px", type = "cairo")
+```
+:::
+
+# Trait vs PCs
+
+:::panel-tabset
+## Legends for plotting
+
+**function to plot legends for fig 3**
+
+```{r}
+legend_region <- ggplot(fgmerge, aes(x = PC2, y = BudBreak_cGDD_plasticity,
+                                           shape=Region) ) +
+              geom_point( size=3, alpha=0.9) +
+              theme_bw(base_size = 11, base_family = "Times") +
+              ylab(expression(atop("Plasticity of bud break",paste("(cGDD)")))) +
+              theme(axis.text=element_text(size=14), 
+                    axis.title=element_text(size=12),
+                    legend.text=element_text(size=rel(.8)), 
+                    strip.text = element_text(size=30), 
+                    legend.position = "bottom")
+
+legend_ancestry <- ggplot(fgmerge, aes(x = PC2, y = BudBreak_cGDD_plasticity,color = q1) ) +
+              geom_point( size=3, alpha=0.9) +
+              
+              scale_color_gradient("Ancestry",low = "grey95",high = "#251714FF") +
+              geom_smooth(aes(x=PC2, y=BudBreak_cGDD_plasticity),method="lm",
+                          se=FALSE,formula = y ~ x,
+                          inherit.aes = FALSE, lwd=1, colour="#009E73") +
+              theme_bw(base_size = 11, base_family = "Times") +
+              ylab(expression(atop("Plasticity of bud break",paste("(cGDD)")))) +
+              theme(axis.text=element_text(size=14), 
+                    axis.title=element_text(size=12),
+                    panel.background = element_rect(fill = "transparent"),
+                    legend.text=element_text(size=rel(.8)), 
+                    strip.text = element_text(size=30),
+                    legend.position = "bottom")
+
+
+
+
+# ggsave("./figures/Qpc/bud_break_plasticity_vs_PC2_ancestry_coloring.png", width = 1200, height = 2000, units = "px", type = "cairo")
+```
+
+**function to plot legends for supplementary figure**
+
+```{r}
+# function to reposition the legend in one of the empty facets
+require(lemon) # required package
+
+# code from: https://stackoverflow.com/questions/54438495/shift-legend-into-empty-facets-of-a-faceted-plot-in-ggplot2
+
+shift_legend3 <- function(p) {
+    pnls <- cowplot::plot_to_gtable(p) %>% gtable::gtable_filter("panel") %>%
+      with(setNames(grobs, layout$name)) %>% purrr::keep(~identical(.x,zeroGrob()))
+
+    if( length(pnls) == 0 ) stop( "No empty facets in the plot" )
+
+    lemon::reposition_legend( p, "center", panel=names(pnls) )
+}
+```
+
+## Data Wrangling
+
+**Trait data**
+
+```{r}
+# set up the data frame
+fgmerge_LA_traits <- fgmerge[,c("Family","Budbreak_2020" ,"BudSet_2019","BudSet_2020","Growth",
+                                "BudBreak_cGDD_plasticity","BudSet_2019_plasticity",
+                                "BudSet_2020_plasticity","Growth_plasticity","TotalDry_plasticity",
+                                "RootShoot_plasticity","SideBranch_MainStem_plasticity",
+                                "Delta13Carbon_plasticity","Delta15Nitrogen_plasticity",
+                                "PercentN_plasticity","CN_ratio_plasticity","TotalDry","RootShoot",
+                                "SideBranch_MainStem","delta13C","delta15N","percentN" ,"CN_ratio",
+                                "PC1","PC2",#"PC3",
+                                "State","Region", "Latitude",
+                                "Longitude","Elevation","q1","q2")]
+
+# traits to plot 
+trait_id <- c("BudSet_2019","Budbreak_2020","Growth","TotalDry")
+
+fgmerge_LA_traits_long <- fgmerge_LA_traits %>%
+  pivot_longer(cols = all_of(trait_id), names_to = "Trait", values_to = "TraitValue")
+
+require(plyr)
+fgmerge_LA_traits_long$Figure_axis_text <- revalue(fgmerge_LA_traits_long$Trait,
+                                               c(#SideBranch_MainStem = "Side branch:Main stem",
+                                               # RootShoot = "Root:Shoot",
+                                               TotalDry = "Total dry biomass",
+                                               # TotalDry_plasticity = "Total dry biomass (p)",
+                                               Growth = "Height growth",
+                                               # Growth_plasticity="Height growth (p)",
+                                               #CN_ratio = "C:N",
+                                               # PercentN = "Percent N",
+                                               # Delta15Nitrogen = "delta 15N",
+                                               # delta13C = "delta 13C",
+                                               # RootShoot_plasticity = "Root:Shoot",
+                                               # SideBranch_MainStem_plasticity = "Side branch:Main stem",
+                                               # Delta13Carbon_plasticity = "delta 13C",
+                                               # Delta15Nitrogen_plasticity = "delta 15N",
+                                               # PercentN_plasticity = "Percent N",
+                                               # CN_ratio_plasticity = "C:N",
+                                               # BudBreak_2020_plasticity = "Bud break (2020)",
+                                               # BudSet_2020_plasticity = "Bud set (2020)",
+                                               # BudSet_2019_plasticity = "Bud set (2019)",
+                                               Budbreak_2020 = "Bud break (2020)",
+                                               # BudSet_2020 = "Bud set (2020)",
+                                               BudSet_2019 = "Bud set (2019)"))
+
+fgmerge_LA_traits_long$Figure_axis_text <- factor(fgmerge_LA_traits_long$Figure_axis_text,
+                                                  levels = c("Bud set (2019)","Bud break (2020)",
+                                                    "Height growth","Total dry biomass"))
+```
+
+**Plasticity trait**
+
+```{r}
+# plasticity on PC1
+# plasticity to plot 
+pc1_plasticity_id <- c("BudBreak_cGDD_plasticity")
+
+fgmerge_plasticity_pc1_long <- fgmerge_LA_traits %>%
+  pivot_longer(cols = all_of(pc1_plasticity_id), names_to = "Trait", values_to = "TraitValue")
+
+fgmerge_plasticity_pc1_long$Figure_axis_text <- revalue(fgmerge_plasticity_pc1_long$Trait,
+                                               c(
+                                               BudBreak_cGDD_plasticity = "Bud break (2020)"))
+
+# plasticity on PC2
+# plasticity to plot 
+pc2_plasticity_id <- c("Growth_plasticity","TotalDry_plasticity")
+
+fgmerge_plasticity_pc2_long <- fgmerge_LA_traits %>%
+  pivot_longer(cols = all_of(pc2_plasticity_id), names_to = "Trait", values_to = "TraitValue")
+
+fgmerge_plasticity_pc2_long$Figure_axis_text <- revalue(fgmerge_plasticity_pc2_long$Trait,
+                                               c(
+                                               TotalDry_plasticity = "Total dry biomass",
+                                               Growth_plasticity="Height growth"))
+
+fgmerge_plasticity_pc2_long$Figure_axis_text <- factor(fgmerge_plasticity_pc2_long$Figure_axis_text,
+                                                  levels = c("Height growth","Total dry biomass"))
+```
+
+**Trait vs PC plots**
+
+```{r}
+# PC 1 plot
+
+PC1_traits <- fgmerge_LA_traits_long[fgmerge_LA_traits_long$Trait==c("BudSet_2019","Budbreak_2020"),]
+
+pc1_trait_plot <- ggplot(data = PC1_traits, aes(y = TraitValue, x = PC1)) +
+                  geom_point(aes(shape = Region, color = q1), size = 4, alpha = 0.9) +
+                  # Range wide
+                  # geom_smooth(method = "lm", se = F, color = "#56B4E9", fill = "#009E73", alpha = 0.3) +
+                  geom_smooth(aes(x=PC1, y=TraitValue),method="lm",
+                                          se=FALSE,formula = y ~ x,
+                                          inherit.aes = FALSE, lwd=1, colour="#009E73") +
+                  # Admixed (Core + Margin)
+                  # geom_smooth(data = growth_clim_long %>% filter(Region != "Edge"), 
+                  #             method = "lm", se = TRUE, color = "maroon", fill = "darkred", alpha = 0.2) +
+                  scale_color_gradient("Ancestry", low = "grey95",high = "#251714FF") +
+                  facet_wrap(~ Figure_axis_text, scales = "free_y", 
+                             nrow = 2,strip.position = "top", dir = "v") +
+                    theme_bw(base_size = 11, base_family = "Times") +
+                  theme(axis.text = element_text(size = 14),
+                        axis.title = element_text(size = 12),
+                        panel.background = element_blank(),
+                        legend.background = element_blank(),
+                        panel.grid = element_blank(),
+                        # plot.background = element_blank(),
+                        legend.text = element_text(size = rel(0.8)),
+                        strip.text = element_text(size = 15),
+                        legend.position = "none",
+                        # strip.background = element_rect(fill=NA), #
+                        legend.box = "horizontal") +
+                  labs(y = "", x = "PC1") 
+            
+
+# PC 2 plot
+PC2_traits <- fgmerge_LA_traits_long[fgmerge_LA_traits_long$Trait==c("Growth","TotalDry"),]
+
+pc2_trait_plot <- ggplot(data = PC2_traits, aes(y = TraitValue, x = PC2)) +
+                  geom_point(aes(shape = Region, color = q1), size = 4, alpha = 0.9) +
+                  # Range wide
+                  # geom_smooth(method = "lm", se = F, color = "#56B4E9", fill = "#009E73", alpha = 0.3) +
+                  geom_smooth(aes(x=PC2, y=TraitValue),method="lm",
+                                          se=FALSE,formula = y ~ x,
+                                          inherit.aes = FALSE, lwd=1, colour="#009E73") +
+                  # Admixed (Core + Margin)
+                  # geom_smooth(data = growth_clim_long %>% filter(Region != "Edge"), 
+                  #             method = "lm", se = TRUE, color = "maroon", fill = "darkred", alpha = 0.2) +
+                  scale_color_gradient("Ancestry", low = "grey95",high = "#251714FF") +
+                  facet_wrap(~ Figure_axis_text, scales = "free_y", 
+                             nrow = 2,strip.position = "top", dir = "v") +
+                    theme_bw(base_size = 11, base_family = "Times") +
+                  theme(axis.text = element_text(size = 14),
+                        axis.title = element_text(size = 12),
+                        panel.background = element_blank(),
+                        legend.background = element_blank(),
+                        panel.grid = element_blank(),
+                        # plot.background = element_blank(),
+                        legend.text = element_text(size = rel(0.8)),
+                        strip.text = element_text(size = 15),
+                        legend.position = "none",
+                        # strip.background = element_rect(fill=NA), #
+                        legend.box = "horizontal") +
+                  labs(y = "", x = "PC2") 
+
+# save figure
+# pdf - 12 x 5 in
+# png - 1500 x 656 px
+
+# redo the plot in cowplot for ggsave to work
+
+# ggsave("./figures/Figure4.png", width = 3000, height = 1000,dpi=300,
+#        limitsize = T,
+#        units = "px", type = "cairo")
+# 
+# ggsave("./figures/Figure4.pdf", width = 30, height = 25,dpi=300,
+#        units = "cm")
+
+```
+
+**Plasticity vs PC plots**
+
+```{r}
+# PC 1 plot
+pc1_plasticity_plot <- ggplot(data = fgmerge_plasticity_pc1_long, aes(y = TraitValue, x = PC1)) +
+                        geom_point(aes(shape = Region, color = q1), size = 4, alpha = 0.9) +
+                        # Range wide
+                        # geom_smooth(method = "lm", se = F, color = "#56B4E9", fill = "#009E73", alpha = 0.3) +
+                        geom_smooth(aes(x=PC1, y=TraitValue),method="lm",
+                                                se=FALSE,formula = y ~ x,
+                                                inherit.aes = FALSE, lwd=1, colour="#009E73") +
+                        # Admixed (Core + Margin)
+                        # geom_smooth(data = growth_clim_long %>% filter(Region != "Edge"), 
+                        #             method = "lm", se = TRUE, color = "maroon", fill = "darkred", alpha = 0.2) +
+                        scale_color_gradient("Ancestry", low = "grey95",high = "#251714FF") +
+                        facet_wrap(~ Figure_axis_text, scales = "free_y", 
+                                   nrow = 2,strip.position = "top", dir = "v") +
+                          theme_bw(base_size = 11, base_family = "Times") +
+                        theme(axis.text = element_text(size = 14),
+                              axis.title = element_text(size = 12),
+                              panel.background = element_blank(),
+                              legend.background = element_blank(),
+                              panel.grid = element_blank(),
+                              # plot.background = element_blank(),
+                              legend.text = element_text(size = rel(0.8)),
+                              strip.text = element_text(size = 15),
+                              legend.position = "none",
+                              # strip.background = element_rect(fill=NA), #
+                              legend.box = "horizontal") +
+                        labs(y = "", x = "PC1") 
+            
+
+# PC 2 plot
+pc2_plasticity_plot <- ggplot(data = fgmerge_plasticity_pc2_long, aes(y = TraitValue, x = PC2)) +
+                        geom_point(aes(shape = Region, color = q1), size = 4, alpha = 0.9) +
+                        # Range wide
+                        # geom_smooth(method = "lm", se = F, color = "#56B4E9", fill = "#009E73", alpha = 0.3) +
+                        geom_smooth(aes(x=PC2, y=TraitValue),method="lm",
+                                                se=FALSE,formula = y ~ x,
+                                                inherit.aes = FALSE, lwd=1, colour="#009E73") +
+                       
+                        scale_color_gradient("Ancestry", low = "grey95",high = "#251714FF") +
+                        facet_wrap(~ Figure_axis_text, scales = "free_y", 
+                                   nrow = 2,strip.position = "top", dir = "v") +
+                          theme_bw(base_size = 11, base_family = "Times") +
+                        theme(axis.text = element_text(size = 14),
+                              axis.title = element_text(size = 12),
+                              panel.background = element_blank(),
+                              legend.background = element_blank(),
+                              panel.grid = element_blank(),
+                              # plot.background = element_blank(),
+                              legend.text = element_text(size = rel(0.8)),
+                              strip.text = element_text(size = 15),
+                              legend.position = "none",
+                              # strip.background = element_rect(fill=NA), #
+                              legend.box = "horizontal") +
+                        labs(y = "", x = "PC2") 
+```
+
+## Paper Figure 3
+
+```{r message=FALSE, warning=FALSE}
+#| fig-height: 10
+#| fig-width: 15
+panel_3A <- qpc_plot
+panel_3B <- PC1_PC2_plot
+panel_3C <- plot_grid(pc1_trait_plot,pc2_trait_plot)
+
+
+bottom_row <- cowplot::plot_grid(panel_3B, panel_3C, labels = c('B', 'C'), label_size = 12,
+                                 rel_widths = c(1,1.2))
+top_row <- cowplot::plot_grid(panel_3A + guides(color = guide_legend(nrow = 1, byrow = TRUE, 
+                              keywidth = unit(3, "lines"), 
+                              keyheight = unit(1, "lines"),
+                              label.vjust = 0.5)))
+
+plot_fig <- cowplot::plot_grid(top_row, bottom_row, labels = c('A', ''), label_size = 12, ncol = 1,
+                   rel_heights = c(1,1.4))
+
+
+
+
+legend1 = cowplot::get_plot_component(qpc_plot + scale_x_discrete(guide = guide_axis(check.overlap = TRUE)), 'guide-box-top', return_all = TRUE)
+legend2 = cowplot::get_plot_component(legend_ancestry, 'guide-box-bottom', return_all = TRUE)
+legend3 = cowplot::get_plot_component(legend_region, 'guide-box-bottom', return_all = TRUE)
+
+cowplot::plot_grid(plot_fig, 
+                   cowplot::plot_grid(legend2,legend3, nrow = 1),
+                   nrow = 2, rel_heights = c(0.6,0.1),
+                   rel_widths = c(1,1))
+
+
+
+
+# ggsave("./figures/paper_figures/Figure3.png", width = 3800, height = 3012,dpi=300,
+#        limitsize = F,
+#        units = "px", type = "cairo")
+# 
+# ggsave("./figures/paper_figures/Figure3.pdf", width = 30, height = 25,dpi=300,
+#        units = "cm")
+```
+
+## Paper Figure 4 Supplementary  
+- Plasticity plots  
+```{r message=FALSE, warning=FALSE}
+#| fig-height: 7
+#| fig-width: 10
+plot3S_legend <- PC1_PC2_plot + (theme(legend.position = "right",legend.box = "horizontal"))
+
+panel_3S_leftTOP <- pc1_plasticity_plot
+panel_3S_leftBOTTOM <- get_plot_component(plot3S_legend, 'guide-box-right', return_all = TRUE)
+  
+panel_3S_leftPANEL <- cowplot::plot_grid(panel_3S_leftTOP, 
+                                         plot_grid(panel_3S_leftBOTTOM, nrow = 1), 
+                                         labels = c('', ''), 
+                                         label_size = 12, 
+                                         ncol = 1,
+                                         rel_heights = c(1.12,1))
+
+panel_3S_rightPANEL <- pc2_plasticity_plot
+
+plot_platicity_fig <- cowplot::plot_grid(panel_3S_leftPANEL, panel_3S_rightPANEL, 
+                               labels = c('', ''), label_size = 12, ncol = 2)
+
+
+plot_platicity_fig
+
+
+
+
+# ggsave("./figures/paper_figures/Figure4S.png", width = 2500, height = 2000,dpi=300,
+#        limitsize = F,
+#        units = "px", type = "cairo")
+# 
+# ggsave("figures/paper_figures/FigureS4.pdf", width = 20, height = 15,dpi=300,
+#        units = "cm")
+```
+
+
+:::

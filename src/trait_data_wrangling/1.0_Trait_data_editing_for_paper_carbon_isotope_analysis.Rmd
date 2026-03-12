@@ -1,0 +1,531 @@
+---
+title: "Trait Data"
+author: "Anoob Prakash"
+output: html_document
+date: "03/07/2022"
+output:
+  rmarkdown::html_document:
+    theme: cosmo  
+    number_sections: false
+    toc: true
+    toc_float: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{css zoom-lib-src, echo = FALSE}
+script src = "https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"
+```
+
+```{js zoom-jquery, echo = FALSE}
+ $(document).ready(function() {
+    $('body').prepend('<div class=\"zoomDiv\"><img src=\"\" class=\"zoomImg\"></div>');
+    // onClick function for all plots (img's)
+    $('img:not(.zoomImg)').click(function() {
+      $('.zoomImg').attr('src', $(this).attr('src')).css({width: '100%'});
+      $('.zoomDiv').css({opacity: '1', width: 'auto', border: '1px solid white', borderRadius: '5px', position: 'fixed', top: '50%', left: '50%', marginRight: '-50%', transform: 'translate(-50%, -50%)', boxShadow: '0px 0px 50px #888888', zIndex: '50', overflow: 'auto', maxHeight: '100%'});
+    });
+    // onClick function for zoomImg
+    $('img.zoomImg').click(function() {
+      $('.zoomDiv').css({opacity: '0', width: '0%'}); 
+    });
+  });
+```
+
+```{r}
+require(stringr)
+require(viridis)
+require(lmerTest)
+require(tidyverse)
+require(readxl)
+```
+
+```{r}
+# local machine
+# setwd("Z:/Anoob/Polygenic_Adaptation/ANALYSIS")
+
+# server
+setwd("~/mydata/Anoob/Polygenic_Adaptation/ANALYSIS")
+
+source("./Qpc_function.R")
+```
+
+## Data {.tabset .tabset-fade .tabset-pills}
+
+```{r}
+# Meta data
+Meta <- read.table("../../MCMCglmm/Exome/RS_Exome_metadata.txt", sep="\t",header=T)
+```
+
+### Trait
+
+```{r}
+budbreak_2020 <- read.csv("../../MCMCglmm/trait_data/BudBreak_2020_cGDD.csv", stringsAsFactors = T)
+budset_2019 <- read.csv("../../MCMCglmm/trait_data/BudSet_2019.csv", stringsAsFactors = T)
+budset_2020 <- read.csv("../../MCMCglmm/trait_data/BudSet_2020.csv", stringsAsFactors = T)
+
+growth_2019 <- read.csv("../../MCMCglmm/trait_data/Growth_2019.csv", stringsAsFactors = T)
+growth_2020 <- read.csv("../../MCMCglmm/trait_data/Growth_2020.csv", stringsAsFactors = T)
+Plasticity <- read.csv("../../MCMCglmm/trait_data/Plasticity.csv", stringsAsFactors = T)
+Plasticity <- Plasticity[,c("Family","PC1","BudBreak_cGDD","BudBreak_DOY","BudSet_2019","BudSet_2020")]
+colnames(Plasticity) <- c("Family","PC1","BudBreak_cGDD_plasticity","BudBreak_DOY_plasticity",
+                          "BudSet_2019_plasticity","BudSet_2020_plasticity")
+# Z:\\Anoob\\MCMCglmm\\trait_data\\BudBreak_2020.csv
+
+# Add mBed ----------------------------------------------------------------
+budbreak_2020$mBed <- paste0(budbreak_2020$Garden,"_",budbreak_2020$Bed)
+budset_2019$mBed <- paste0(budset_2019$Garden,"_",budset_2019$Bed)
+budset_2020$mBed <- paste0(budset_2020$Garden,"_",budset_2020$Bed)
+growth_2019$mBed <- paste0(growth_2019$Garden,"_",growth_2019$Bed)
+growth_2020$mBed <- paste0(growth_2020$Garden,"_",growth_2020$Bed)
+
+# Rename Region -------------------------------------------------
+colnames(Meta)[colnames(Meta)=="Pop"] <- "Population"
+Meta$Region <- as.factor(Meta$Region)
+Meta$Region <- plyr::mapvalues(Meta$Region, from = c("C", "M", "E"), to = c("Core", "Margin", "Edge"));Meta$Region <- factor(Meta$Region,levels = c("Core", "Margin", "Edge"))
+
+# remove family YRB_01
+Meta <- Meta[Meta$Family!="YRB_01",]
+
+meta <- as.data.frame(Meta$Family);colnames(meta)[1] <- "Family"
+nrow(meta)
+```
+
+### biomass
+
+```{r}
+
+## VT
+biomass_VT <- read.csv("../../MCMCglmm/trait_data/biomass_VT_2020.csv", stringsAsFactors = T)
+biomass_VT <- biomass_VT[!is.na(biomass_VT$Bag_plus_root_weight),]
+biomass_VT$Garden <- "Vermont"
+biomass_VT$Bed <- gsub(".*_D.*","D",
+                     gsub(".*_A.*","A",
+                          gsub(".*_B.*","B",
+                               gsub(".*_C.*","C",
+                                    gsub(".*_E.*","E",biomass_VT$plant_ID,perl=T)))))
+
+biomass_VT$Family <- sub("_VT.*","",biomass_VT$plant_ID,perl=T)
+biomass_VT$Population <- sub("_.*","",biomass_VT$plant_ID,perl=T)
+colnames(biomass_VT)[3] <- "MainStem"
+colnames(biomass_VT)[4] <- "SideBranch"
+colnames(biomass_VT)[6] <- "Root"
+
+## MD
+biomass_MD_AG <- readxl::read_xlsx("../../MCMCglmm/trait_data/biomass_MD_aboveGround_2020.csv.xlsx")
+biomass_MD_BG <- readxl::read_xlsx("../../MCMCglmm/trait_data/biomass_MD_belowGround_2020.csv.xlsx")
+biomass_MD <- merge(biomass_MD_AG,biomass_MD_BG[,c("plantID","RootDryWght")])
+biomass_MD <- biomass_MD[,c("plantID","MainStem","SideBranch","RootDryWght","FinalArch","Notes")]
+colnames(biomass_MD)[1] <- "plant_ID"
+colnames(biomass_MD)[4] <- "Root"
+colnames(biomass_MD)[5] <- "Architecture"
+
+biomass_MD <- biomass_MD[!is.na(biomass_MD$SideBranch),]
+biomass_MD$Garden <- "Maryland"
+biomass_MD$Bed <- gsub(".*_D.*","D",
+                     gsub(".*_A.*","A",
+                          gsub(".*_B.*","B",
+                               gsub(".*_C.*","C",
+                                    gsub(".*_E.*","E",biomass_MD$plant_ID,perl=T)))))
+
+biomass_MD$Family <- sub("_MD.*","",biomass_MD$plant_ID,perl=T)
+biomass_MD$Population <- sub("_.*","",biomass_MD$plant_ID,perl=T)
+```
+
+```{r eval = F, echo=F}
+## NC
+## changes made on local system
+files.list <- list.files(path = "C:\\Users\\Anoob Prakash\\Dropbox\\Spruce_CommonGarden_Data\\Biomass\\NC\\1_total\\",pattern='*.xlsx',full.names=T)
+df.list <- lapply(files.list, read_excel)
+require(data.table)
+df <- rbindlist(df.list, idcol = "id",fill=T)
+colnames(df)[2] <- "plant_ID"
+colnames(df)[5] <- "Architecture"
+colnames(df)[9] <- "SideBranch"
+colnames(df)[10] <- "MainStem"
+colnames(df)[11] <- "Root"
+colnames(df)[12] <- "BranchOnly"
+colnames(df)[8] <- "NeedleOnly"
+df$SideBranch <- as.numeric(df$SideBranch)
+
+df2 <- df[is.na(df$SideBranch),]
+df <- df[!is.na(df$SideBranch),]
+df2$NeedleOnly <- as.numeric(df2$NeedleOnly)
+df2$BranchOnly <- as.numeric(df2$BranchOnly)
+df2$SideBranch <- df2$NeedleOnly + df2$BranchOnly
+df_merge <- rbind(df,df2)
+
+# write.csv(df_merge, "Z:\\Anoob\\MCMCglmm\\trait_data\\biomass_NC_2020.csv")
+# convert blank values to NA
+# df <- df %>% mutate_all(na_if,"")
+
+# df <- df %>% mutate (SideBranch = coalesce(SideBranch1,SideBranch2)) 
+```
+
+```{r}
+biomass_NC <- read.csv("../../MCMCglmm/trait_data/biomass_NC_2020.csv", stringsAsFactors = T) # bed C excluded as roots not measured 
+
+biomass_NC <- biomass_NC[!is.na(biomass_NC$SideBranch),]
+biomass_NC$Garden <- "North_Carolina"
+biomass_NC$Bed <- gsub(".*_D.*","D",
+                     gsub(".*_A.*","A",
+                          gsub(".*_B.*","B",
+                               gsub(".*_E.*","E",biomass_NC$plant_ID,perl=T))))
+
+biomass_NC$Family <- sub("_NC.*","",biomass_NC$plant_ID,perl=T)
+biomass_NC$Population <- sub("_.*","",biomass_NC$plant_ID,perl=T)
+```
+
+```{r}
+biomass_VT <- biomass_VT[,c("plant_ID","Population","Family","Garden","Bed","MainStem","SideBranch","Root","comments")]
+colnames(biomass_VT)[9] <- "Notes"
+biomass_VT$Architecture <- NA
+biomass_MD <- biomass_MD[,c("plant_ID","Population","Family","Garden","Bed","MainStem","SideBranch","Root","Notes","Architecture")]
+biomass_NC <- biomass_NC[,c("plant_ID","Population","Family","Garden","Bed","MainStem","SideBranch","Root","Notes","Architecture")]
+
+biomass <- rbind(biomass_VT,biomass_MD,biomass_NC)
+biomass$mBed <- paste0(biomass$Garden,"_",biomass$Bed)
+biomass$MainStem <- as.numeric(biomass$MainStem)
+biomass$Root <- as.numeric(biomass$Root)
+biomass$Population <- as.factor(biomass$Population)
+biomass$Family <- as.factor(biomass$Family)
+biomass$Garden <- as.factor(biomass$Garden)
+biomass$mBed <- as.factor(biomass$mBed)
+
+biomass$TotalDry <- biomass$MainStem + biomass$SideBranch + biomass$Root # total dry biomass
+biomass$RootShoot <- (biomass$Root) / (biomass$MainStem + biomass$SideBranch) # root:shoot ratio
+biomass$SideBr_MainSt <-  biomass$SideBranch/biomass$MainStem # side branch:Main stem ratio
+
+# remove NaNs and convert it into NAs
+biomass$SideBr_MainSt[is.nan(biomass$SideBr_MainSt)]<-NA
+biomass$RootShoot[is.nan(biomass$RootShoot)]<-NA
+biomass$TotalDry[is.nan(biomass$TotalDry)]<-NA
+
+
+# write.csv(biomass, "Z:/Anoob/Polygenic_Adaptation/TraitData//biomass_2020.csv")
+```
+
+### isotopes
+
+```{r}
+# VT
+isotope_VT <- readxl::read_xlsx("../../MCMCglmm/trait_data/isotopes/VT_isotopes.XLSX")
+colnames(isotope_VT)[2] <- "SampleID"
+colnames(isotope_VT)[4] <- "percentC"
+colnames(isotope_VT)[6] <- "percentN"
+# colnames(isotope_VT)[7] <- "Notes"
+isotope_VT$Notes <- NA
+isotope_VT$Family <- sub("_VT.*","",isotope_VT$SampleID,perl=T)
+isotope_VT$Population <- sub("_.*","",isotope_VT$Family,perl=T)
+isotope_VT$Bed <- gsub(".*_D.*","D",
+                     gsub(".*_A.*","A",
+                          gsub(".*_B.*","B",
+                               gsub(".*_E.*","E",
+                                    gsub(".*_C.*","C", isotope_VT$SampleID,perl=T)))))
+isotope_VT$plant_ID <- paste0(isotope_VT$Family,"_",isotope_VT$Bed,"_VT")
+isotope_VT$Garden <- "Vermont"
+isotope_VT <- isotope_VT[,c("plant_ID","Population","Family","Garden","Bed","d13C","percentC","d15N","percentN","Notes")]
+
+# NC
+isotope_NC <- readxl::read_xlsx("../../MCMCglmm/trait_data/isotopes/NC_isotopes.XLSX")
+colnames(isotope_NC)[2] <- "SampleID"
+colnames(isotope_NC)[4] <- "percentC"
+colnames(isotope_NC)[6] <- "percentN"
+colnames(isotope_NC)[7] <- "Notes"
+isotope_NC$Family <- sub("_NC.*","",isotope_NC$SampleID,perl=T)
+isotope_NC$Population <- sub("_.*","",isotope_NC$Family,perl=T)
+isotope_NC$Bed <- gsub(".*_D.*","D",
+                     gsub(".*_A.*","A",
+                          gsub(".*_B.*","B",
+                               gsub(".*_E.*","E",
+                                    gsub(".*_C.*","C", isotope_NC$SampleID,perl=T)))))
+isotope_NC$plant_ID <- paste0(isotope_NC$Family,"_",isotope_NC$Bed,"_NC")
+isotope_NC$Garden <- "North_Carolina"
+isotope_NC <- isotope_NC[,c("plant_ID","Population","Family","Garden","Bed","d13C","percentC","d15N","percentN","Notes")]
+
+
+# MD
+isotope_MD <- readxl::read_xlsx("../../MCMCglmm/trait_data/isotopes/MD_isotopes.XLSX")
+colnames(isotope_MD)[2] <- "SampleID"
+colnames(isotope_MD)[4] <- "percentC"
+colnames(isotope_MD)[6] <- "percentN"
+colnames(isotope_MD)[7] <- "Notes"
+isotope_MD$Family <- sub("_MD.*","",isotope_MD$SampleID,perl=T)
+isotope_MD$Population <- sub("_.*","",isotope_MD$Family,perl=T)
+isotope_MD$Bed <- gsub(".*_D.*","D",
+                     gsub(".*_A.*","A",
+                          gsub(".*_B.*","B",
+                               gsub(".*_E.*","E",
+                                    gsub(".*_C.*","C", isotope_MD$SampleID,perl=T)))))
+isotope_MD$plant_ID <- paste0(isotope_MD$Family,"_",isotope_MD$Bed,"_MD")
+isotope_MD$Garden <- "Maryland"
+isotope_MD <- isotope_MD[,c("plant_ID","Population","Family","Garden","Bed","d13C","percentC","d15N","percentN","Notes")]
+
+# combine data set
+isotope <- rbind(isotope_VT,isotope_MD,isotope_NC)
+isotope$CN_ratio <- isotope$percentC/isotope$percentN
+isotope$mBed <- paste0(isotope$Garden,"_",isotope$Bed)
+isotope$d13C <- as.numeric(isotope$d13C)
+isotope$percentC <- as.numeric(isotope$percentC)
+isotope$d15N <- as.numeric(isotope$d15N)
+isotope$percentN <- as.numeric(isotope$percentN)
+isotope$Garden <- as.factor(isotope$Garden)
+isotope$mBed <- as.factor(isotope$mBed)
+
+# write.csv(isotope, "Z:/Anoob/Polygenic_Adaptation/TraitData//isotope_2020.csv")
+```
+
+### Isotope and Biomass plasticity\
+```{r}
+isobio_p <- read.csv("../TraitData/biomass_isotope_plasticity_2020.csv")
+# isobio_p <- merge(isobio_p,Meta, by="Family")
+isobio_p <- isobio_p[,c("Family","TotalDry_plasticity","RootShoot_plasticity",
+                        "SideBranch_MainStem_plasticity","Delta13Carbon_plasticity",
+                        "Delta15Nitrogen_plasticity","PercentN_plasticity",
+                        "CN_ratio_plasticity")]
+```
+
+
+## Models to generate blups {.tabset .tabset-fade .tabset-pills}
+
+### Traits
+
+```{r}
+# Create the growth values for 2019-2020
+growth_full <- merge(x=subset(growth_2019, select=-c(Height_Fall2019,Growth)), 
+                     y=growth_2020[,c("plant_ID","FinalHT")],
+                     by.x="plant_ID")
+growth_full <- merge(x=growth_full, 
+                     y=Plasticity[,c("Family","PC1")],
+                     by.x="Family")
+growth_full$Growth <- growth_full$FinalHT - growth_full$initial_h
+```
+
+```{r}
+# Trait blups -------------------------------------------------------------
+# lmer for budbreak 2020 
+budbreak_20_mod <- lmer(data = budbreak_2020, 
+                        cGDD ~ Garden +  
+                          (1|Family) + (1|mBed))
+# setting up the blups for budbreak
+coef_budbreak_20 <- coef(budbreak_20_mod)
+blup_budbreak_20 <- cbind.data.frame(row.names(coef_budbreak_20[[1]]),
+                                     coef_budbreak_20$Family$`(Intercept)`)
+colnames(blup_budbreak_20) <- c("Family","Budbreak_2020")
+#-------------------------------------------------------------------------------
+# lmer for budset 2019 
+budset_19_mod <- lmer(data = budset_2019, 
+                      BudSet ~ Garden +  
+                        (1|Family) + (1|mBed))
+
+# setting up the blups for budset 2019
+coef_budset_19 <- coef(budset_19_mod)
+blup_budset_19 <- cbind.data.frame(row.names(coef_budset_19[[1]]),
+                                   coef_budset_19$Family$`(Intercept)`)
+colnames(blup_budset_19) <- c("Family","BudSet_2019")
+#-------------------------------------------------------------------------------
+# lmer for budset 2020 
+budset_20_mod <- lmer(data = budset_2020, 
+                      BudSet ~ Garden +  
+                        (1|Family) + (1|mBed))
+
+# setting up the blups for budset 2020
+coef_budset_20 <- coef(budset_20_mod)
+blup_budset_20 <- cbind.data.frame(row.names(coef_budset_20[[1]]),
+                                   coef_budset_20$Family$`(Intercept)`)
+colnames(blup_budset_20) <- c("Family","BudSet_2020")
+#-------------------------------------------------------------------------------
+# lmer for growth  
+growth_full_mod <- lmer(data = growth_full, 
+                        Growth ~ Garden +  
+                          (1|Family) + (1|mBed))
+# setting up the blups for growth
+coef_growth_full <- coef(growth_full_mod)
+blup_growth_full <- cbind.data.frame(row.names(coef_growth_full[[1]]),
+                                     coef_growth_full$Family$`(Intercept)`)
+colnames(blup_growth_full) <- c("Family","Growth")
+```
+
+### Biomass\
+
+- Log transform the ratios
+```{r}
+# biomass blups -------------------------------------------------------------
+# lmer for TotalDry biomass 
+TotalDry_mod <- lmer(data = biomass, 
+                        TotalDry ~ Garden +  
+                          (1|Family) + (1|mBed))
+# setting up the blups for TotalDry biomass
+coef_TotalDry_mod <- coef(TotalDry_mod)
+blup_TotalDry_mod <- cbind.data.frame(row.names(coef_TotalDry_mod[[1]]),
+                                     coef_TotalDry_mod$Family$`(Intercept)`)
+colnames(blup_TotalDry_mod) <- c("Family","TotalDry")
+
+# lmer for Root:Shoot ratio 
+
+# using the standardized values
+
+RootShoot_mod <- lmer(data = biomass, # REML=FALSE,
+                        log(RootShoot) ~ Garden +  
+                          (1|Family) + (1|mBed), control = lmerControl(optimizer ="Nelder_Mead"))
+summary(RootShoot_mod)
+# setting up the blups for Root:Shoot ratio
+coef_RootShoot_mod <- coef(RootShoot_mod)
+blup_RootShoot_mod <- cbind.data.frame(row.names(coef_RootShoot_mod[[1]]),
+                                     coef_RootShoot_mod$Family$`(Intercept)`)
+colnames(blup_RootShoot_mod) <- c("Family","RootShoot")
+
+# lmer for SideBr_MainSt 
+SideBr_MainSt_mod <- lmer(data = biomass, 
+                        log(SideBr_MainSt) ~ Garden +  
+                          (1|Family) + (1|mBed))
+summary(SideBr_MainSt_mod)
+# setting up the blups for Relative Needle biomass
+coef_SideBr_MainSt_mod <- coef(SideBr_MainSt_mod)
+blup_SideBr_MainSt_mod <- cbind.data.frame(row.names(coef_SideBr_MainSt_mod[[1]]),
+                                     coef_SideBr_MainSt_mod$Family$`(Intercept)`)
+colnames(blup_SideBr_MainSt_mod) <- c("Family","SideBranch_MainStem")
+
+# combine the data frame for biomass blups
+biomass_blups <- list(as.data.frame(blup_TotalDry_mod),as.data.frame(blup_RootShoot_mod),as.data.frame(blup_SideBr_MainSt_mod))
+
+#merge all data frames in list
+biomass_blups <- biomass_blups %>% reduce(full_join, by='Family')
+```
+
+
+### Isotopes
+
+```{r}
+# isotope blups -------------------------------------------------------------
+# lmer for delta 13 carbon 
+d13C_mod <- lmer(data = isotope, 
+                        d13C ~ Garden +  
+                          (1|Family) + (1|mBed))
+# setting up the blups for delta 13 carbon
+coef_d13C_mod <- coef(d13C_mod)
+blup_d13C_mod <- cbind.data.frame(row.names(coef_d13C_mod[[1]]),
+                                     coef_d13C_mod$Family$`(Intercept)`)
+colnames(blup_d13C_mod) <- c("Family","delta13C")
+
+
+# lmer for delta 15 nitrogen 
+d15N_mod <- lmer(data = isotope, 
+                        d15N ~ Garden +  
+                          (1|Family) + (1|mBed))
+# setting up the blups for delta 13 nitrogen
+coef_d15N_mod <- coef(d15N_mod)
+blup_d15N_mod <- cbind.data.frame(row.names(coef_d15N_mod[[1]]),
+                                     coef_d15N_mod$Family$`(Intercept)`)
+colnames(blup_d15N_mod) <- c("Family","delta15N")
+
+# lmer for percent nitrogen 
+percentN_mod <- lmer(data = isotope, 
+                        percentN ~ Garden +  
+                          (1|Family) + (1|mBed))
+# setting up the blups for percent nitrogen
+coef_percentN_mod <- coef(percentN_mod)
+blup_percentN_mod <- cbind.data.frame(row.names(coef_percentN_mod[[1]]),
+                                     coef_percentN_mod$Family$`(Intercept)`)
+colnames(blup_percentN_mod) <- c("Family","percentN")
+
+# lmer for CN_ratio 
+CN_ratio_mod <- lmer(data = isotope, 
+                        CN_ratio ~ Garden +  
+                          (1|Family) + (1|mBed))
+# setting up the blups for percent nitrogen
+coef_CN_ratio_mod <- coef(CN_ratio_mod)
+blup_CN_ratio_mod <- cbind.data.frame(row.names(coef_CN_ratio_mod[[1]]),
+                                     coef_CN_ratio_mod$Family$`(Intercept)`)
+colnames(blup_CN_ratio_mod) <- c("Family","CN_ratio")
+
+# combine the data frame for biomass blups
+isotope_blups <- list(as.data.frame(blup_d13C_mod),as.data.frame(blup_d15N_mod),
+                      as.data.frame(blup_percentN_mod),as.data.frame(blup_CN_ratio_mod))
+
+#merge all data frames in list
+isotope_blups <- isotope_blups %>% reduce(full_join, by='Family')
+
+```
+
+### Isotope and Biomass plasticity\
+```{r}
+isobio_p <- read.csv("../TraitData/biomass_isotope_plasticity_2020.csv")
+
+isobio_p <- isobio_p[,c("Family","TotalDry_plasticity","RootShoot_plasticity",
+                        "SideBranch_MainStem_plasticity","Delta13Carbon_plasticity",
+                        "Delta15Nitrogen_plasticity","PercentN_plasticity",
+                        "CN_ratio_plasticity")]
+```
+
+# Create blup table
+
+```{r}
+Plasticity <- Plasticity[,c("Family","BudBreak_cGDD_plasticity",
+                          "BudSet_2019_plasticity","BudSet_2020_plasticity")]
+
+#put all data frames into list
+df_list <- list(as.data.frame(blup_budbreak_20), as.data.frame(blup_budset_19), 
+                as.data.frame(blup_budset_20),as.data.frame(blup_growth_full),
+                as.data.frame(Plasticity), as.data.frame(isobio_p),
+                as.data.frame(biomass_blups),as.data.frame(isotope_blups))
+
+#merge all data frames in list
+bluptable <- df_list %>% reduce(full_join, by='Family')
+famKin <- as.data.frame(rownames(myK))
+colnames(famKin) <- "Family"
+bluptable <- merge(x=famKin,y=bluptable,by="Family", all.x=T)
+
+# write.csv(bluptable, "/home/Anoob/mydata/Anoob/Polygenic_Adaptation/TraitData/trait_blups_complete.csv")
+```
+
+# Discrimination against delta 13C
+```{r}
+# Function to convert delta13C to discrimination (Delta13C)
+delta_to_delta13C <- function(delta13C_sample, delta13C_air = -8) {
+  delta13C_sample_ratio <- delta13C_sample / 1000 + 1
+  delta13C_air_ratio <- delta13C_air / 1000 + 1
+  delta13C <- (delta13C_air_ratio - delta13C_sample_ratio) / delta13C_sample_ratio * 1000
+  return(delta13C)
+}
+
+# Function to calculate intrinsic water use efficiency (iWUE)
+calculate_iWUE <- function(delta13C, ca = 400) {
+  a <- 4.4  # Fractionation during CO2 diffusion through stomata
+  b <- 27   # Fractionation associated with carboxylation
+  ci <- ca * (delta13C - a) / (b - a)
+  iWUE <- ca * (1 - ci/ca) / 1.6
+  return(iWUE)
+}
+
+# Example data (replace with your own)
+delta13C_values <- isotope$d13c
+
+# Convert delta13C to Delta13C
+delta13C <- sapply(delta13C_values, delta_to_delta13C)
+
+# Calculate iWUE
+iWUE <- sapply(delta13C, calculate_iWUE)
+
+# Create a data frame with results
+results <- data.frame(delta13C_sample = delta13C_values,
+                      Delta13C = delta13C,
+                      iWUE = iWUE)
+
+# Print results
+print(results)
+
+# Plot the relationship between Delta13C and iWUE
+plot(delta13C, iWUE, xlab = "Δ13C (‰)", ylab = "iWUE (μmol/mol)",
+     main = "Relationship between Δ13C and iWUE")
+abline(lm(iWUE ~ delta13C), col = "red")
+
+# Calculate correlation coefficient
+correlation <- cor(delta13C, iWUE)
+print(paste("Correlation coefficient:", round(correlation, 3)))
+
+# Perform linear regression
+model <- lm(iWUE ~ delta13C)
+summary(model)
+```
+

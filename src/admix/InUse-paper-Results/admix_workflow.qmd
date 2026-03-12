@@ -1,0 +1,198 @@
+---
+title: "Admixture Workflow"
+author: "Anoob Prakash"
+execute:
+  eval: false
+format: 
+  html:
+    code-overflow: wrap
+    toc: true
+    embed-resources: true
+    code_folding: hide
+---
+
+## File paths   
+
+```bash
+
+WD="/netfiles02/kellrlab/Anoob/Polygenic_Adaptation/ANALYSIS/filtering_the_snps_across_REGION"
+ref="/netfiles02/kellrlab/datashare/ReferenceGenomes/Picea/Pmarianav1/assembly"
+bam="/netfiles02/kellrlab/Anoob/Polygenic_Adaptation/ANALYSIS/black_spruce"
+
+cd $WD
+```
+
+## Estimate GLs for each genetic clusters and BS samples   
+```bash
+
+for POP in CORE MARGIN EDGE BS
+do
+    (
+	angsd -b $WD/REGIONS/${POP}_bam.list \
+	-ref ${ref}/Pmariana1.0-genome_reduced.fa \
+	-anc ${ref}/Pmariana1.0-genome_reduced.fa \
+	-out $WD/REGIONS/${POP}/${POP} \
+	-nThreads 8 \
+	-uniqueOnly 1 \
+	-remove_bads 1 \
+	-trim 1 \
+	-C 50 \
+	-baq 1 \
+	-minMapQ 20 \
+	-minQ 20 \
+	-skipTriallelic 1 \
+	-GL 1 \
+	-doGlf 2 \
+	-doMajorMinor 4 \
+	-doMaf 1 \
+	-doCounts 1
+    echo "starting task $POP.."
+    ) 
+done
+
+```
+
+## Create intersected list of sites for different analysis from the angsd output  
+
+### Sort sites for each genetic cluster  
+```{.bash .code-overflow-wrap}
+
+zcat ./REGIONS/CORE/CORE_general.mafs.gz | awk 'BEGIN { OFS = ":" }{ print $1,$2 }' | sed '1d' | sort > ./REGIONS/intersected_sites/CORE/CORE_sites.txt
+
+zcat ./REGIONS/EDGE/EDGE_general.mafs.gz | awk 'BEGIN { OFS = ":" }{ print $1,$2 }' | sed '1d' | sort > ./REGIONS/intersected_sites/EDGE/EDGE_sites.txt
+
+zcat ./REGIONS/MARGIN/MARGIN_general.mafs.gz | awk 'BEGIN { OFS = ":" }{ print $1,$2 }' | sed '1d' | sort > ./REGIONS/intersected_sites/MARGIN/MARGIN_sites.txt
+
+zcat ./REGIONS/BS/BS.mafs.gz | awk 'BEGIN { OFS = ":" }{ print $1,$2 }' | sed '1d' | sort > ./REGIONS/intersected_sites/BS/BS_sites.txt
+```
+
+### Finding loci intersection among regions
+```{.bash .code-overflow-wrap}
+
+comm -12 ./REGIONS/intersected_sites/CORE/CORE_sites.txt ./REGIONS/intersected_sites/EDGE/EDGE_sites.txt > ./REGIONS/intersected_sites/RS_intersected_sites/CORE_EDGE_sites.txt
+
+comm -12 ./REGIONS/intersected_sites/RS_intersected_sites/CORE_EDGE_sites.txt ./REGIONS/intersected_sites/MARGIN/MARGIN_sites.txt > ./REGIONS/intersected_sites/RS_intersected_sites/CORE_EDGE_MARGIN_sites.txt		
+
+comm -12 ./REGIONS/intersected_sites/RS_intersected_sites/CORE_EDGE_MARGIN_sites.txt ./REGIONS/intersected_sites/BS/BS_sites.txt > ./REGIONS/intersected_sites/RS_and_BS_intersected_sites/CORE_EDGE_MARGIN_BS_sites.txt				
+```
+
+### Intersect sites for only RS (324 families)
+```{.bash .code-overflow-wrap}
+# clean the intersected file
+sed 's/:/\t/' ./REGIONS/intersected_sites/RS_intersected_sites/CORE_EDGE_MARGIN_sites.txt | sort -b -k1,1 > ./REGIONS/intersected_sites/RS_intersected_sites/intersect.txt
+
+# create rf file - optional
+cut -f1 ./REGIONS/intersected_sites/RS_intersected_sites/intersect.txt | uniq | sort > ./REGIONS/intersected_sites/RS_intersected_sites/intersect.chrs
+
+# index the intersect files
+angsd sites index ./REGIONS/intersected_sites/RS_intersected_sites/intersect.txt
+```
+
+### Intersect sites of RS (324 families) and BS (18 families)
+```{.bash .code-overflow-wrap}
+# clean the intersected file
+sed 's/:/\t/' ./REGIONS/intersected_sites/RS_and_BS_intersected_sites/CORE_EDGE_MARGIN_BS_sites.txt | sort -b -k1,1 > ./REGIONS/intersected_sites/RS_and_BS_intersected_sites/intersect.txt
+
+# create rf file - optional
+cut -f1 ./REGIONS/intersected_sites/RS_and_BS_intersected_sites/intersect.txt | uniq | sort > ./REGIONS/intersected_sites/RS_and_BS_intersected_sites/intersect.chrs
+
+# index the intersect files
+angsd sites index ./REGIONS/intersected_sites/RS_and_BS_intersected_sites/intersect.txt
+```
+
+### Check numbers
+```{.bash .code-overflow-wrap}
+# Number of total sites with monomorphic and plolymorphic sites
+# sites info
+cat ./REGIONS/intersected_sites/RS_intersected_sites/CORE_EDGE_MARGIN_sites.txt | wc -l 
+
+# sites info
+cat ./REGIONS/intersected_sites/RS_and_BS_intersected_sites/intersect.txt | wc -l 
+```
+
+## Index the bam files  --run once
+```bash
+
+## index the black spruce bam files for fast lookup 
+bs_path="/netfiles02/kellrlab/datashare/Spruce/exome_capture/WES_mapping/Mapping_WES/ref_Pmariana/BWA/Pmariana/"
+
+for FILE in ${bs_path}*.sorted.rmdup.bam
+do
+	samtools index ${FILE}
+done
+
+# do the same for the RS bam files  --run once
+# these steps are already done once on the datashare, so skip this step
+```
+
+## Generate GLs for admix analysis  
+```bash
+
+angsd -b ${bam}/324RSfam_18BSfam_bam_VACC.list \
+-ref ${ref}/Pmariana1.0-genome_reduced.fa \
+-anc ${ref}/Pmariana1.0-genome_reduced.fa \
+-fai ${ref}/Pmariana1.0-genome_reduced.fa.fai \
+-out ./intersect_poly/324RSfam_18BSfam/Full_Sampling_intersect \
+-sites ./REGIONS/intersected_sites/RS_and_BS_intersected_sites/intersect.txt \
+-nThreads 8 \
+-uniqueOnly 1 \
+-remove_bads 1 \
+-trim 1 \
+-C 50 \
+-baq 1 \
+-GL 1 \
+-doGlf 2 \
+-minMapQ 20 \
+-minQ 20 \
+-minInd 2 \
+-setMinDepthInd 1 \
+-setMaxDepthInd 17 \
+-setMinDepth 15 \
+-skipTriallelic 1  \
+-doCounts 1 \
+-doMaf 1 \
+-doMajorMinor 4 \
+-dumpCounts 2 \
+-doDepth 1 \
+-SNP_pval 1e-6 \
+-minMaf 0.1
+```
+
+## Install pcangsd --run once
+```bash
+
+# create the virtual environment
+conda create -n pcangsd@1.36
+# or 
+conda create --name pcangsd@1.36
+
+# set up the environment for the virtual environment
+conda activate pcangsd@1.36
+module load gcc/13.3.0
+module load python3.12-anaconda
+
+# create a new folder for the new version of pcangsd
+cd ~/Downloads
+mkdir pcangsd.v1.36.1
+cd pcangsd.v1.36.1
+
+# Get pcangsd, install it, and make sure help prints
+git clone  https://github.com/Rosemeis/pcangsd.git
+cd pcangsd
+pip3 install .
+pcangsd -h
+
+
+```
+
+## Admix analysis for K=2 
+```bash
+
+conda activate pcangsd@1.36
+
+echo admix analysis
+
+pcangsd -b intersect_poly/Full_Sampling_intersect_poly_updated_with_BS_samples.beagle.gz \
+-o $WD/admix/Full_Sampling_intersect_poly_updated_with_BS_samples_PCA_admix_K2 --threads 24 \
+--dosage-save --sites-save --pi-save --maf-save --iter 100000 --admix --admix-K 2 -e 1
+```

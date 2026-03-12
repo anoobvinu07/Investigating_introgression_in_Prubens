@@ -1,0 +1,79 @@
+admix analysis
+------------------------------------
+PCAngsd v1.36.1
+Jonas Meisner and Anders Albrechtsen
+Using 24 thread(s)
+------------------------------------
+
+Parsing Beagle file.
+Loaded 295959 sites and 342 samples.
+Estimating minor allele frequencies.
+EM (MAF) converged at iteration: 21
+Number of sites after MAF filtering (0.05): 295959
+
+Estimating covariance matrix.
+Using 1 principal components (manually selected).
+Individual allele frequencies estimated (1).
+Individual allele frequencies estimated (2).	RMSE=0.0025780
+Individual allele frequencies estimated (3).	RMSE=0.0016673
+Individual allele frequencies estimated (4).	RMSE=0.0010577
+Individual allele frequencies estimated (5).	RMSE=0.0006904
+Individual allele frequencies estimated (6).	RMSE=0.0004598
+Individual allele frequencies estimated (7).	RMSE=0.0003092
+Individual allele frequencies estimated (8).	RMSE=0.0002091
+Individual allele frequencies estimated (9).	RMSE=0.0001420
+Individual allele frequencies estimated (10).	RMSE=0.0000966
+Individual allele frequencies estimated (11).	RMSE=0.0000660
+Individual allele frequencies estimated (12).	RMSE=0.0000451
+Individual allele frequencies estimated (13).	RMSE=0.0000311
+Individual allele frequencies estimated (14).	RMSE=0.0000213
+Individual allele frequencies estimated (15).	RMSE=0.0000148
+Individual allele frequencies estimated (16).	RMSE=0.0000102
+Individual allele frequencies estimated (17).	RMSE=0.0000071
+PCAngsd converged.
+Saved covariance matrix as /netfiles02/kellrlab/Anoob/Polygenic_Adaptation/ANALYSIS/filtering_the_snps_across_REGION/admix/Full_Sampling_intersect_poly_updated_with_BS_samples_PCA_admix_K2.cov
+
+Estimating admixture proportions using NMF (CSG-MU).
+K=2, Alpha=0.0, Batches=10, Seed=0
+CSG-MU (1).	RMSE=0.231928427
+CSG-MU (2).	RMSE=0.148106492
+CSG-MU (3).	RMSE=0.065071503
+CSG-MU (4).	RMSE=0.061821133
+CSG-MU (5).	RMSE=0.062495744
+CSG-MU (6).	RMSE=0.059957176
+CSG-MU (7).	RMSE=0.041574894
+CSG-MU (8).	RMSE=0.028758368
+CSG-MU (9).	RMSE=0.016926629
+CSG-MU (10).	RMSE=0.008826610
+CSG-MU (11).	RMSE=0.004318512
+CSG-MU (12).	RMSE=0.002057116
+CSG-MU (13).	RMSE=0.000914137
+CSG-MU (14).	RMSE=0.000366483
+CSG-MU (15).	RMSE=0.000265673
+CSG-MU (16).	RMSE=0.000132540
+CSG-MU (17).	RMSE=0.000101966
+CSG-MU (18).	RMSE=0.000070460
+CSG-MU (19).	RMSE=0.000050856
+CSG-MU (20).	RMSE=0.000042513
+CSG-MU (21).	RMSE=0.000035614
+CSG-MU (22).	RMSE=0.000028112
+CSG-MU (23).	RMSE=0.000021602
+CSG-MU (24).	RMSE=0.000017832
+CSG-MU (25).	RMSE=0.000012355
+CSG-MU (26).	RMSE=0.000011339
+CSG-MU (27).	RMSE=0.000009013
+Converged.
+Frobenius error: 24.21591
+Log-likelihood: -90579432.46872
+Saved admixture proportions as /netfiles02/kellrlab/Anoob/Polygenic_Adaptation/ANALYSIS/filtering_the_snps_across_REGION/admix/Full_Sampling_intersect_poly_updated_with_BS_samples_PCA_admix_K2.admix.2.Q
+Saved ancestral allele frequencies proportions as /netfiles02/kellrlab/Anoob/Polygenic_Adaptation/ANALYSIS/filtering_the_snps_across_REGION/admix/Full_Sampling_intersect_poly_updated_with_BS_samples_PCA_admix_K2.admix.2.P
+
+Saved minor allele frequencies as /netfiles02/kellrlab/Anoob/Polygenic_Adaptation/ANALYSIS/filtering_the_snps_across_REGION/admix/Full_Sampling_intersect_poly_updated_with_BS_samples_PCA_admix_K2.freqs
+
+Saved genotype dosages as /netfiles02/kellrlab/Anoob/Polygenic_Adaptation/ANALYSIS/filtering_the_snps_across_REGION/admix/Full_Sampling_intersect_poly_updated_with_BS_samples_PCA_admix_K2.dosage.npy (Binary)
+
+Saved individual allele frequencies as /netfiles02/kellrlab/Anoob/Polygenic_Adaptation/ANALYSIS/filtering_the_snps_across_REGION/admix/Full_Sampling_intersect_poly_updated_with_BS_samples_PCA_admix_K2.pi.npy (Binary)
+
+Creating boolean vector of sites surviving filters.
+Saved boolean vector of sites kept after filtering as /netfiles02/kellrlab/Anoob/Polygenic_Adaptation/ANALYSIS/filtering_the_snps_across_REGION/admix/Full_Sampling_intersect_poly_updated_with_BS_samples_PCA_admix_K2.sites
+Total elapsed time: 1m17s

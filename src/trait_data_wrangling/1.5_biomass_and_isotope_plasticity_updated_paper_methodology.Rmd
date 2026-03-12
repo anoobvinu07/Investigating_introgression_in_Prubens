@@ -1,0 +1,467 @@
+---
+title: "Plasticity based on garden PCs"
+author: "Anoob Prakash"
+date: "02/13/2023"
+output:
+  rmarkdown::html_document:
+    theme: cosmo  
+    number_sections: false
+    toc: false
+    toc_float: true
+editor_options: 
+  chunk_output_type: console
+---
+
+```{css zoom-lib-src, echo = FALSE}
+script src = "https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"
+```
+
+```{js zoom-jquery, echo = FALSE}
+ $(document).ready(function() {
+    $('body').prepend('<div class=\"zoomDiv\"><img src=\"\" class=\"zoomImg\"></div>');
+    // onClick function for all plots (img's)
+    $('img:not(.zoomImg)').click(function() {
+      $('.zoomImg').attr('src', $(this).attr('src')).css({width: '100%'});
+      $('.zoomDiv').css({opacity: '1', width: 'auto', border: '1px solid white', borderRadius: '5px', position: 'fixed', top: '50%', left: '50%', marginRight: '-50%', transform: 'translate(-50%, -50%)', boxShadow: '0px 0px 50px #888888', zIndex: '50', overflow: 'auto', maxHeight: '100%'});
+    });
+    // onClick function for zoomImg
+    $('img.zoomImg').click(function() {
+      $('.zoomDiv').css({opacity: '0', width: '0%'}); 
+    });
+  });
+```
+
+# About \
+**Trait plasticity (as described in the Prakash et al., 2022)**\
+
+To estimate phenotypic plasticity for each trait, we ran LMMs (Model IV, Table S1) that included the fixed effect of garden climate (gPC1, based on each garden’s eigenvector score along PC1 of the climate PCA for the year of measurement), and random effects of Bed (1|Bed) and Family with random intercepts and slopes (gPC1|Family). We used the ‘coef()’ function to extract the random slopes for each Family with gPC1, which provides a measure of plasticity to garden climate (Arnold et al. 2019). To test if the magnitude of plasticity reflected differences due to source climate variability, we modeled the absolute value of plasticity as a function of source climate (sPC1), with a random effect of Population (Model V, Table S1).\
+
+## Data
+```{r}
+setwd("Z:/Anoob/Polygenic_Adaptation/ANALYSIS")
+```
+
+```{r message=FALSE, warning=FALSE}
+require(lmerTest)
+```
+
+
+
+**Source climate**  
+```{r}
+# setwd("Z:/Anoob/MCMCglmm")
+
+Population_climateNA <- read.csv("../ClimateData/paper1_climate_data/PCA_sprucePops.txt",
+                                 header=T, sep="\t")
+colnames(Population_climateNA)[colnames(Population_climateNA)=="PC1_sel"] <- "PC1"
+
+Family_climateNA <- read.csv("../ClimateData/paper1_climate_data/PCA_spruceFams.txt",
+                                 header=T, sep="\t")
+colnames(Family_climateNA)[colnames(Family_climateNA)=="PC1_sel"] <- "PC1"
+```
+
+**Garden climate**  
+```{r}
+Garden_clim <- read.table("../ClimateData/paper1_climate_data/climNA_gardens_2019-20.txt", header=T)
+Garden_clim
+selVars1 <- c('DD_0','DD18','MAR','PAS','MSP','RH','EXT','CMD','TD','eFFP','PET')
+colnames(Garden_clim)[1] <- "Garden"
+colnames(Garden_clim)[2] <- "Year"
+
+
+### estimate the mean climate variables for 2019-2020 across three garden sites
+# Subset the data for MD
+md_data <- Garden_clim %>% filter(Garden == "MD")
+# Calculate column means for numeric columns
+md_numeric <- colnames(md_data[-c(1:2)])
+md_means <- apply(md_data[, md_numeric], 2, mean)
+# Add the means as a new row
+md_data_with_means <- rbind(md_data, c(Garden = "MD", Year = "Mean", md_means))
+
+# Subset the data for NC
+nc_data <- Garden_clim %>% filter(Garden == "NC")
+# Calculate column means for numeric columns
+nc_numeric <- colnames(nc_data[-c(1:2)])
+nc_means <- apply(nc_data[, nc_numeric], 2, mean)
+# Add the means as a new row
+nc_data_with_means <- rbind(nc_data, c(Garden = "NC", Year = "Mean", nc_means))
+
+# Subset the data for VT
+vt_data <- Garden_clim %>% filter(Garden == "VT")
+# Calculate column means for numeric columns
+vt_numeric <- colnames(vt_data[-c(1:2)])
+vt_means <- apply(vt_data[, vt_numeric], 2, mean)
+# Add the means as a new row
+vt_data_with_means <- rbind(vt_data, c(Garden = "VT", Year = "Mean", vt_means))
+
+# combined mean data - added to the garden climate data.frame
+Garden_clim <- rbind(Garden_clim,md_data_with_means[3,],nc_data_with_means[3,],vt_data_with_means[3,])
+
+# Reset row names and revert columns to numeric
+rownames(Garden_clim) <- NULL
+Garden_clim[vt_numeric] <- lapply(Garden_clim[vt_numeric], as.numeric)
+
+# Selected cliamte variables
+selVars1 <- c('DD18','MAR','PAS','MSP','RH','EXT','CMD','PET')
+
+
+# create ID for garden
+garden_id <- Garden_clim[,1:2]
+
+# selected clim of gardens
+data_p1 <- Garden_clim[,selVars1]
+```
+
+**Climate PCA**  
+```{r}
+## Climate PCA
+data_pca <- prcomp(data_p1,scale. = T)
+
+# Extract PC axes for plotting
+PCAvalues <- data.frame(Garden = Garden_clim$Garden, Year = Garden_clim$Year,
+                        data_pca$x)
+PCAvalues$Year <- as.factor(PCAvalues$Year)
+
+# Extract loadings of the variables
+PCAloadings <- data.frame(Variables = rownames(data_pca$rotation), data_pca$rotation)
+
+PCAvalues_mod <- PCAvalues
+PCAvalues_mod$Garden[PCAvalues_mod$Garden=="VT"] <- "Vermont"
+PCAvalues_mod$Garden[PCAvalues_mod$Garden=="MD"] <- "Maryland"
+PCAvalues_mod$Garden[PCAvalues_mod$Garden=="NC"] <- "North_Carolina"
+```
+
+**biomass and isotopes**
+
+```{r}
+biomass <- read.csv("../TraitData/biomass_2020.csv")
+isotope <- read.csv("../TraitData/isotope_2020.csv")
+
+# Region palette
+reg_palette <- c("goldenrod2","green2","steelblue")
+```
+
+## Plasticity  {.tabset .tabset-fade .tabset-pills}
+
+### Height growth plasticity \
+
+```{r}
+growth_2019 <- read.csv("../../MCMCglmm/trait_data/Growth_2019.csv", stringsAsFactors = T)
+growth_2020 <- read.csv("../../MCMCglmm/trait_data/Growth_2020.csv", stringsAsFactors = T)
+
+growth_2019$mBed <- paste0(growth_2019$Garden,"_",growth_2019$Bed)
+growth_2020$mBed <- paste0(growth_2020$Garden,"_",growth_2020$Bed)
+
+# Create the growth values for 2019-2020
+growth_full <- merge(x=subset(growth_2019, select=-c(Height_Fall2019,Growth)), 
+                     y=growth_2020[,c("plant_ID","FinalHT")],
+                     by.x="plant_ID")
+# growth_full <- merge(x=growth_full, 
+#                      y=Plasticity[,c("Family","PC1")],
+#                      by.x="Family")
+growth_full$Growth <- growth_full$FinalHT - growth_full$initial_h
+
+
+## height growth plasticity
+GW <- merge(x=growth_full,y=PCAvalues_mod[PCAvalues_mod$Year=="Mean",], all.x=TRUE)
+GW$mBed <- paste0(GW$Garden,"_",GW$Bed)
+
+# plasticity model for bud break 2020
+GW_PC1_mod <- lmer(data = GW, na.action = na.omit,
+                          Growth ~ PC1  + (1|mBed) + (PC1|Family))
+
+summary(GW_PC1_mod)
+
+# converting the negative values to absolute values to make plasticity values comparable across the traits
+
+gw_PC1 <- coef(GW_PC1_mod)
+# hist(testx_PC1$PC1)
+gw_PC1 <- gw_PC1$Family
+gw_PC1 <- cbind(Family=rownames(gw_PC1),gw_PC1)
+rownames(gw_PC1) <- NULL
+gw_PC1$abs <- abs(gw_PC1$PC1)
+hist(gw_PC1$PC1)
+hist(gw_PC1$abs)
+gw_PC1 <- gw_PC1[,-2]
+colnames(gw_PC1)[3] <- "Growth_plasticity"
+gw_PC1 <- gw_PC1[,-2]  
+```
+
+
+### Total dry matter \
+
+```{r}
+TDM <- merge(x=biomass,y=PCAvalues_mod[PCAvalues_mod$Year=="Mean",], all.x=TRUE)
+TDM$mBed <- paste0(TDM$Garden,"_",TDM$Bed)
+
+#plasticity model
+TDM_PC1_mod <- lmer(data = TDM, na.action = na.omit,
+                          TotalDry ~ PC1  + (1|mBed) + (PC1|Family))
+
+summary(TDM_PC1_mod)
+
+TDM_PC1 <- ranef(TDM_PC1_mod)
+TDM_PC1 <- TDM_PC1$Family
+TDM_PC1 <- cbind(Family=rownames(TDM_PC1),TDM_PC1)
+rownames(TDM_PC1) <- NULL
+
+TDM_PC1$Family <- as.factor(TDM_PC1$Family)
+colnames(TDM_PC1)[colnames(TDM_PC1)=="PC1"] <- "TotalDry_plasticity"
+TDM_PC1 <- TDM_PC1[,-2]
+head(TDM_PC1) 
+
+# converting the negative values to absolute values to make plasticity values comparable across the traits
+
+tdm_PC1 <- coef(TDM_PC1_mod)
+# hist(testx_PC1$PC1)
+tdm_PC1 <- tdm_PC1$Family
+tdm_PC1 <- cbind(Family=rownames(tdm_PC1),tdm_PC1)
+rownames(tdm_PC1) <- NULL
+tdm_PC1$abs <- abs(tdm_PC1$PC1)
+hist(tdm_PC1$PC1)
+hist(tdm_PC1$abs)
+tdm_PC1 <- tdm_PC1[,-2]
+colnames(tdm_PC1)[3] <- "TotalDry_plasticity"
+tdm_PC1 <- tdm_PC1[,-2] 
+```
+
+### Root:Shoot \
+```{r}
+RootShoot <- merge(x=biomass,y=PCAvalues_mod[PCAvalues_mod$Year=="Mean",], all.x=TRUE)
+RootShoot$mBed <- paste0(RootShoot$Garden,"_",RootShoot$Bed)
+
+#plasticity model
+RootShoot_PC1_mod <- lmer(data = RootShoot, na.action = na.omit,
+                          RootShoot ~ PC1  + (1|mBed) + (PC1|Family))
+
+summary(RootShoot_PC1_mod)
+
+RootShoot_PC1 <- ranef(RootShoot_PC1_mod)
+RootShoot_PC1 <- RootShoot_PC1$Family
+RootShoot_PC1 <- cbind(Family=rownames(RootShoot_PC1),RootShoot_PC1)
+rownames(RootShoot_PC1) <- NULL
+
+RootShoot_PC1$Family <- as.factor(RootShoot_PC1$Family)
+colnames(RootShoot_PC1)[colnames(RootShoot_PC1)=="PC1"] <- "RootShoot_plasticity"
+RootShoot_PC1 <- RootShoot_PC1[,-2]
+head(RootShoot_PC1) 
+
+# converting the negative values to absolute values to make plasticity values comparable across the traits
+
+rootshoot_PC1 <- coef(RootShoot_PC1_mod)
+# hist(testx_PC1$PC1)
+rootshoot_PC1 <- rootshoot_PC1$Family
+rootshoot_PC1 <- cbind(Family=rownames(rootshoot_PC1),rootshoot_PC1)
+rownames(rootshoot_PC1) <- NULL
+rootshoot_PC1$abs <- abs(rootshoot_PC1$PC1)
+hist(rootshoot_PC1$PC1)
+hist(rootshoot_PC1$abs)
+rootshoot_PC1 <- rootshoot_PC1[,-2]
+colnames(rootshoot_PC1)[3] <- "RootShoot_plasticity"
+rootshoot_PC1 <- rootshoot_PC1[,-2] 
+```
+
+
+### SideBranch:MainStem \
+```{r}
+SMR <- merge(x=biomass,y=PCAvalues_mod[PCAvalues_mod$Year=="Mean",], all.x=TRUE)
+SMR$mBed <- paste0(SMR$Garden,"_",SMR$Bed)
+
+#plasticity model
+SMR_PC1_mod <- lmer(data = SMR, na.action = na.omit,
+                          SideBr_MainSt ~ PC1  + (1|mBed) + (PC1|Family))
+
+summary(SMR_PC1_mod)
+
+SMR_PC1 <- ranef(SMR_PC1_mod)
+SMR_PC1 <- SMR_PC1$Family
+SMR_PC1 <- cbind(Family=rownames(SMR_PC1),SMR_PC1)
+rownames(SMR_PC1) <- NULL
+
+SMR_PC1$Family <- as.factor(SMR_PC1$Family)
+colnames(SMR_PC1)[colnames(SMR_PC1)=="PC1"] <- "SideBranch_MainStem_plasticity"
+SMR_PC1 <- SMR_PC1[,-2]
+head(SMR_PC1) 
+
+# converting the negative values to absolute values to make plasticity values comparable across the traits
+
+smr_PC1 <- coef(SMR_PC1_mod)
+# hist(testx_PC1$PC1)
+smr_PC1 <- smr_PC1$Family
+smr_PC1 <- cbind(Family=rownames(smr_PC1),smr_PC1)
+rownames(smr_PC1) <- NULL
+smr_PC1$abs <- abs(smr_PC1$PC1)
+hist(smr_PC1$PC1)
+hist(smr_PC1$abs)
+smr_PC1 <- smr_PC1[,-2]
+colnames(smr_PC1)[3] <- "SideBranch_MainStem_plasticity"
+smr_PC1 <- smr_PC1[,-2] 
+```
+
+
+### delta13carbon \
+```{r}
+D13C <- merge(x=isotope,y=PCAvalues_mod[PCAvalues_mod$Year=="Mean",], all.x=TRUE)
+D13C$mBed <- paste0(D13C$Garden,"_",D13C$Bed)
+
+#plasticity model
+D13C_PC1_mod <- lmer(data = D13C, na.action = na.omit,
+                          d13C ~ PC1  + (1|mBed) + (PC1|Family))
+
+summary(D13C_PC1_mod)
+
+D13C_PC1 <- ranef(D13C_PC1_mod)
+D13C_PC1 <- D13C_PC1$Family
+D13C_PC1 <- cbind(Family=rownames(D13C_PC1),D13C_PC1)
+rownames(D13C_PC1) <- NULL
+
+D13C_PC1$Family <- as.factor(D13C_PC1$Family)
+colnames(D13C_PC1)[colnames(D13C_PC1)=="PC1"] <- "Delta13Carbon_plasticity"
+D13C_PC1 <- D13C_PC1[,-2]
+head(D13C_PC1) 
+
+# converting the negative values to absolute values to make plasticity values comparable across the traits
+
+d13c_PC1 <- coef(D13C_PC1_mod)
+d13c_PC1 <- d13c_PC1$Family
+d13c_PC1 <- cbind(Family=rownames(d13c_PC1),d13c_PC1)
+rownames(d13c_PC1) <- NULL
+d13c_PC1$abs <- abs(d13c_PC1$PC1)
+hist(d13c_PC1$PC1)
+hist(d13c_PC1$abs)
+d13c_PC1 <- d13c_PC1[,-2]
+colnames(d13c_PC1)[3] <- "Delta13Carbon_plasticity"
+d13c_PC1 <- d13c_PC1[,-2] 
+```
+
+### delta15nitrogen \
+```{r}
+D15N <- merge(x=isotope,y=PCAvalues_mod[PCAvalues_mod$Year=="Mean",], all.x=TRUE)
+D15N$mBed <- paste0(D15N$Garden,"_",D15N$Bed)
+
+#plasticity model
+D15N_PC1_mod <- lmer(data = D15N, na.action = na.omit,
+                          d15N ~ PC1  + (1|mBed) + (PC1|Family))
+
+summary(D15N_PC1_mod)
+
+D15N_PC1 <- ranef(D15N_PC1_mod)
+D15N_PC1 <- D15N_PC1$Family
+D15N_PC1 <- cbind(Family=rownames(D15N_PC1),D15N_PC1)
+rownames(D15N_PC1) <- NULL
+
+D15N_PC1$Family <- as.factor(D15N_PC1$Family)
+colnames(D15N_PC1)[colnames(D15N_PC1)=="PC1"] <- "Delta15Nitrogen_plasticity"
+D15N_PC1 <- D15N_PC1[,-2]
+head(D15N_PC1) 
+
+# converting the negative values to absolute values to make plasticity values comparable across the traits
+
+d15n_PC1 <- coef(D15N_PC1_mod)
+d15n_PC1 <- d15n_PC1$Family
+d15n_PC1 <- cbind(Family=rownames(d15n_PC1),d15n_PC1)
+rownames(d15n_PC1) <- NULL
+d15n_PC1$abs <- abs(d15n_PC1$PC1)
+hist(d15n_PC1$PC1)
+hist(d15n_PC1$abs)
+d15n_PC1 <- d15n_PC1[,-2]
+colnames(d15n_PC1)[3] <- "Delta15Nitrogen_plasticity"
+d15n_PC1 <- d15n_PC1[,-2] 
+```
+
+
+### PercentN \
+```{r}
+PercentN <- merge(x=isotope,y=PCAvalues_mod[PCAvalues_mod$Year=="Mean",], all.x=TRUE)
+PercentN$mBed <- paste0(PercentN$Garden,"_",PercentN$Bed)
+
+#plasticity model
+PercentN_PC1_mod <- lmer(data = PercentN, na.action = na.omit,
+                          percentN ~ PC1  + (1|mBed) + (PC1|Family))
+
+summary(PercentN_PC1_mod)
+
+PercentN_PC1 <- ranef(PercentN_PC1_mod)
+PercentN_PC1 <- PercentN_PC1$Family
+PercentN_PC1 <- cbind(Family=rownames(PercentN_PC1),PercentN_PC1)
+rownames(PercentN_PC1) <- NULL
+
+PercentN_PC1$Family <- as.factor(PercentN_PC1$Family)
+colnames(PercentN_PC1)[colnames(PercentN_PC1)=="PC1"] <- "PercentN_plasticity"
+PercentN_PC1 <- PercentN_PC1[,-2]
+head(PercentN_PC1) 
+
+# converting the negative values to absolute values to make plasticity values comparable across the traits
+
+percentN_PC1 <- coef(PercentN_PC1_mod)
+percentN_PC1 <- percentN_PC1$Family
+percentN_PC1 <- cbind(Family=rownames(percentN_PC1),percentN_PC1)
+rownames(percentN_PC1) <- NULL
+percentN_PC1$abs <- abs(percentN_PC1$PC1)
+hist(percentN_PC1$PC1)
+hist(percentN_PC1$abs)
+percentN_PC1 <- percentN_PC1[,-2]
+colnames(percentN_PC1)[3] <- "PercentN_plasticity"
+percentN_PC1 <- percentN_PC1[,-2] 
+```
+
+### CN ratio \
+
+```{r}
+CNR <- merge(x=isotope,y=PCAvalues_mod[PCAvalues_mod$Year=="Mean",], all.x=TRUE)
+CNR$mBed <- paste0(CNR$Garden,"_",CNR$Bed)
+
+#plasticity model
+CNR_PC1_mod <- lmer(data = CNR, na.action = na.omit,
+                          CN_ratio ~ PC1  + (1|mBed) + (PC1|Family))
+
+summary(CNR_PC1_mod)
+
+CNR_PC1 <- ranef(CNR_PC1_mod)
+CNR_PC1 <- CNR_PC1$Family
+CNR_PC1 <- cbind(Family=rownames(CNR_PC1),CNR_PC1)
+rownames(CNR_PC1) <- NULL
+
+CNR_PC1$Family <- as.factor(CNR_PC1$Family)
+colnames(CNR_PC1)[colnames(CNR_PC1)=="PC1"] <- "CN_ratio_plasticity"
+CNR_PC1 <- CNR_PC1[,-2]
+head(CNR_PC1) 
+
+# converting the negative values to absolute values to make plasticity values comparable across the traits
+
+cnr_PC1 <- coef(CNR_PC1_mod)
+cnr_PC1 <- cnr_PC1$Family
+cnr_PC1 <- cbind(Family=rownames(cnr_PC1),cnr_PC1)
+rownames(cnr_PC1) <- NULL
+cnr_PC1$abs <- abs(cnr_PC1$PC1)
+hist(cnr_PC1$PC1)
+hist(cnr_PC1$abs)
+cnr_PC1 <- cnr_PC1[,-2]
+colnames(cnr_PC1)[3] <- "CN_ratio_plasticity"
+cnr_PC1 <- cnr_PC1[,-2] 
+```
+
+## combine data\
+
+```{r}
+require(tidyverse)
+# combine the data frame for biomass and isotope blups
+plasticity <- list(as.data.frame(gw_PC1),as.data.frame(tdm_PC1),as.data.frame(rootshoot_PC1), 
+                   as.data.frame(smr_PC1), # biomass
+                   as.data.frame(d13c_PC1),as.data.frame(d15n_PC1), as.data.frame(percentN_PC1),as.data.frame(cnr_PC1)) 
+#merge all data frames in list
+plasticity <- plasticity %>% reduce(full_join, by='Family')
+
+# write.csv(plasticity,"../TraitData/biomass_isotope_plasticity_2020.csv")
+```
+
+
+
+***
+
+# References\
+
+*Arnold PA, Nicotra AB, Kruuk LEB. 2019 Sparse evidence for selection on phenotypic plasticity in response to temperature. Phil. Trans. R. Soc. B 374, 20180185.* \
+
+*Prakash, A., DeYoung, S., Lachmuth, S., Adams, J. L., Johnsen, K., Butnor, J. R., ... & Keller, S. R. (2022). Genotypic variation and plasticity in climate-adaptive traits after range expansion and fragmentation of red spruce (Picea rubens Sarg.). Philosophical Transactions of the Royal Society B, 377(1848), 20210008.*\
+
