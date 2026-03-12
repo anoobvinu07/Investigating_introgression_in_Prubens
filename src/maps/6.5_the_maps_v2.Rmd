@@ -31,7 +31,8 @@ script src = "https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"
   });
 ```
 
-## Files  
+## Files
+
 ```{r}
 # packages
 require(terra)
@@ -52,7 +53,6 @@ require(tidyverse)
 require(ggforce)
 ```
 
-
 ```{r}
 # set working directory 
 # setwd("~/mydata/Anoob/TNC/ANALYSIS") # wright
@@ -61,8 +61,8 @@ setwd("Z:/Anoob/Polygenic_Adaptation/ANALYSIS") # local
 # setwd("~/mydata/Anoob/TNC/ANALYSIS") # wright
 ```
 
+## Data
 
-## Data  
 ```{r}
 # incorporate ancestry score
 # Get ID and pop info for each individual
@@ -178,9 +178,10 @@ lakes_transformed <- st_make_valid(lakes_transformed)
 
 ```
 
-### Elevation data   
+### Elevation data
 
-- Run once 
+-   Run once
+
 ```{r echo = T, eval = F}
 # Get elevation data
 # elevation <- get_elev_raster(world %>% filter(continent == "North America"), z = 7)
@@ -209,7 +210,8 @@ mdt <- readRDS("./elevatr/elev_north_america_masked_zoom_10_2")
 plot(mdt)
 ```
 
-### Test different palettes  
+### Test different palettes
+
 ```{r}
 # Hypso gradient
 grad_hypso <- hypso.colors2(10, "dem_poster")
@@ -250,7 +252,8 @@ plot_pal_test("wiki-2.0_hypso")
 plot_pal_test("dem_screen")
 ```
 
-### Themeing 
+### Themeing
+
 ```{r}
 # load font
 myload_fonts <- function(fontname, family,
@@ -303,8 +306,7 @@ showtext::showtext_auto()
 base_text_size <- 30
 ```
 
-
-## Introgression plot - version 1.0 - for checking the data 
+## Introgression plot - version 1.0 - for checking the data
 
 ```{r}
 # tidy up the ancestry data frame
@@ -316,7 +318,6 @@ dataset2$radius <- dataset2$q2
 colnames(dataset2) <- c("Family","RedSpruce","BlackSpruce","Longitude","Latitude","Radius")
 
 ```
-
 
 ```{r}
 ## introgression map
@@ -355,7 +356,6 @@ int_map <- ggplot() +
         axis.text = element_text(size = base_text_size * 0.4),
         legend.position = "none")
 ```
-
 
 ```{r}
 dataset3 <- dataset2
@@ -433,8 +433,8 @@ pop_int_supplementary <- ggplot() +
         legend.position = "none")
 ```
 
-
 ## Introgression Map - Version 2.0
+
 ```{r}
 require(conStruct) # conStruct package for admix proportions 
 require(maps)
@@ -495,7 +495,8 @@ library(sf)
 library(scales)
 ```
 
-### Admixture plot   
+### Admixture plot
+
 ```{r echo=T, eval=F}
 # Open PDF device
 pdf("./figures/paper_figures/Figure2A_admixture_map_July_2025.pdf", 
@@ -503,7 +504,6 @@ pdf("./figures/paper_figures/Figure2A_admixture_map_July_2025.pdf",
     height = 10,   # height in inches
     pointsize = 12)  # font size
 ```
-
 
 ```{r}
 # Draw the base map
@@ -549,13 +549,13 @@ map.scale(x = -75, y = 35, ratio = FALSE, relwidth = 0.15, metric = TRUE, cex = 
 # export png 1200 x 674
 ```
 
-
 ```{r echo=T,eval=F}
 # Close PDF device
 dev.off()
 ```
 
-#### Admixture inset plot  
+#### Admixture inset plot
+
 ```{r echo=T, eval=F}
 # Open PDF device
 pdf("./figures/paper_figures/Figure2A_inset_July_2025.pdf", 
@@ -563,7 +563,6 @@ pdf("./figures/paper_figures/Figure2A_inset_July_2025.pdf",
     height = 15,   # height in inches
     pointsize = 12)  # font size
 ```
-
 
 ```{r}
 # Draw the base map
@@ -602,13 +601,13 @@ map.axes()
 
 ```
 
-
 ```{r echo=T,eval=F}
 # Close PDF device
 dev.off()
 ```
 
-### topographic maps  
+### topographic maps
+
 ```{r}
 library(tidyterra)  # for the function hypso.colors()
 topo_pal <- hypso.colors(n = 10, palette = "dem_poster")
@@ -706,7 +705,7 @@ simple_basemap <- ggplot() +
                     # scale_y_continuous(breaks=c(37,37.5,38, 38.5,39, 39.5,40))
 ```
 
-# Old code  
+# Old code
 
 ```{r}
 usa <- sf::st_as_sf(maps::map("state", fill=TRUE, plot =FALSE))
@@ -725,8 +724,6 @@ ggpm + geom_magnify(aes(from = ID == "texas"),
                     aspect = "fixed", 
                     expand = 0) 
 ```
-
-
 
 ```{r}
 inset_config <- configure_inset(
@@ -777,8 +774,6 @@ int_map +
 
 ```
 
-
-
 ```{r}
 # version 2
 intmap_v2 <- ggplot() +
@@ -812,7 +807,6 @@ intmap_v2 <- ggplot() +
 
 intmap_v2 +
 ```
-
 
 ```{r}
 library(ggmapinset)
@@ -858,7 +852,6 @@ ggplot() +
         axis.text = element_text(size = base_text_size * 0.4))
 
 ```
-
 
 ```{r}
 basemap2 <- ggplot() +
@@ -1001,7 +994,6 @@ ggplot() +
   labs(title = "Eastern North America Ancestry Map")
 ```
 
-
 ```{r}
 # source: https://wvgis.wvu.edu/data/dataset.php?ID=455
 # load data WV range map
@@ -1011,8 +1003,8 @@ ggplot() +
 #   theme_minimal()
 ```
 
-
 # oct 2023 - current working code
+
 ```{r}
 # data
 info_inds <- read.table("../Info_samples_revised.txt", header=T)
@@ -1063,7 +1055,6 @@ Source_virginia$Group <- factor(Source_virginia$Group, levels = c("Restoration s
 
 ```
 
-
 ```{r}
 # testing 
 # read in shapefile for map
@@ -1084,7 +1075,6 @@ water <- ne_download(scale = "medium", type = "lakes", category = "physical", re
 plot(states)
 plot(states_east)
 ```
-
 
 ```{r}
 # source: https://dominicroye.github.io/en/2022/hillshade-effects/
@@ -1130,7 +1120,6 @@ plot(mdt)
 # mdt <- project(mdt, crs(map_area))
 ```
 
-
 ```{r eval =F, echo=F}
 # reproject vect
 # suiz <- st_transform(suiz, st_crs(suiz_lakes))
@@ -1143,7 +1132,6 @@ names(mdtdf)[3] <- "alt"
 #   mutate(alt = pmax(0, alt))
 
 ```
-
 
 ```{r}
 # Hypso gradient
@@ -1163,7 +1151,6 @@ r_limits <- pmax(r_limits, 0)
 
 # Now lets have some fun with scales from tidyterra
 ```
-
 
 ```{r}
 elevt_test <- ggplot() +
@@ -1234,7 +1221,6 @@ myload_fonts <- function(fontname, family,
 }
 ```
 
-
 ```{r}
 # Theming
 myload_fonts("Noto Serif", "notoserif", "~/R/googlefonts")
@@ -1248,6 +1234,7 @@ require(ggrepel)
 ```
 
 # base map
+
 ```{r}
 basemap <- ggplot() +
   geom_spatraster(data = mdt)+
@@ -1380,8 +1367,6 @@ ggplot() +
 # breaks=c(35.5,36,36.5,37,37.5,38, 38.5,39, 39.5,40),
 ```
 
-
-
 ```{r}
 basemap_long+guides(fill="none")
 
@@ -1493,7 +1478,6 @@ maps::map("state", boundary=FALSE, col="gray", add=TRUE)
 
 ```
 
-
 ```{r}
 require(ggspatial)
 require(tmap)
@@ -1541,8 +1525,6 @@ MD_plot <- basemap_long + theme(plot.background = element_rect("grey97", colour 
 
 
 ```
-
-
 
 ```{r}
 WV_plot <- basemap_long + theme(plot.background = element_rect("grey97", colour = NA),
@@ -1617,7 +1599,6 @@ VA_plot <- basemap_long + theme(plot.background = element_rect("grey97", colour 
                    title = "Virginia") + guides(fill="none")
 ```
 
-
 ```{r}
 require(cowplot)
 legend_bottom <- get_legend(legend_scale + theme(legend.position="bottom"))
@@ -1663,8 +1644,6 @@ grd2
 
 
 ```
-
-
 
 ```{r}
 # WV
@@ -1720,10 +1699,8 @@ require(ggpubr)
 ggarrange(MD_plot,MD_plot,MD_plot, ncol = 3)
 ```
 
+# hill shading -- skipped
 
-
-
-# hill shading  -- skipped
 ```{r}
 ## Create hillshade effect
 
@@ -1763,8 +1740,6 @@ hill_plot <- ggplot() +
 hill_plot
 ```
 
-
-
 ```{r}
 # MD data add
             # all sources
@@ -1794,7 +1769,6 @@ plot(sl)
 asp <- terrain(mdt, "aspect", unit = "radians")
 plot(asp)
 ```
-
 
 ```{r}
 # Convert elevation raster to matrix
@@ -1909,7 +1883,6 @@ ggmap(map) +
 
 ```
 
-
 # usmap
 
 ```{r}
@@ -1949,8 +1922,8 @@ require(tigris)
 
 ```
 
-
 # test on thursday
+
 ```{r}
 
 # install.packages(c("sf", "raster", "here", "ggplot2", "viridis"))
@@ -2036,8 +2009,6 @@ ggplot() +
 map_boundary <- gb_adm1("USA")
 ```
 
-
-
 ```{r}
 # us_states <- readOGR("us-boundaries/us_bound_pop.shp")
 
@@ -2059,8 +2030,6 @@ read_sf('../maps/APPS/cb_2018_us_state_500k.shp') %>%
   ggplot() +
   geom_sf(aes(fill = NAME))
 ```
-
-
 
 # try 200
 
@@ -2095,7 +2064,6 @@ theme_gppr <- function(){
     )
 }
 ```
-
 
 ```{r}
 # Load libraries
@@ -2155,4 +2123,3 @@ ggRGB(dd, r = 1, g = 2, b = 3, maxpixels = 5e+08) +
        fill = 'Owership') +
   theme_gppr()
 ```
-
